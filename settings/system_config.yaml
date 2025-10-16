@@ -1,0 +1,14 @@
+# settings/system_config.yaml
+
+# 기본 모니터링 간격 (초)
+monitoring_interval_default: 1.0
+
+# 로깅 설정
+enable_logging: true
+log_level: INFO
+
+# 시작 지연 시간 (초)
+startup_delay: 3.0
+
+# 최대 모니터 수
+max_monitors: 10

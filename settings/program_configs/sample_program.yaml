@@ -1,0 +1,42 @@
+# settings/program_configs/sample_program.yaml
+
+# 프로그램 기본 정보
+name: sample_program
+window_title: Notepad
+window_class: Notepad
+
+# 모니터링 간격 (초)
+monitoring_interval: 0.5
+
+# 인식 및 자동화 규칙
+rules:
+  # 규칙 1: 다이얼로그 자동 확인
+  - template: dialog_ok
+    threshold: 0.8
+    actions:
+      - type: click
+        params:
+          relative: true  # 템플릿 기준 상대 위치
+          x: 0.5  # 템플릿 너비의 50% 위치
+          y: 0.5  # 템플릿 높이의 50% 위치
+          button: left
+        delay: 0.5
+  
+  # 규칙 2: 자동 저장 버튼 클릭
+  - template: save_button
+    threshold: 0.7
+    actions:
+      - type: click
+        params:
+          x: 100
+          y: 200
+          button: left
+        delay: 0.5
+      - type: text
+        params:
+          text: "자동저장.txt"
+        delay: 1.0
+      - type: key
+        params:
+          key: 13  # Enter 키
+        delay: 0.5
