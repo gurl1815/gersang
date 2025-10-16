@@ -165,6 +165,7 @@ class AutomationGUI(tk.Tk):
         
         ttk.Button(template_btn_frame, text="제거", command=self.remove_template).pack(side=tk.LEFT, padx=2)
         ttk.Button(template_btn_frame, text="테스트", command=self.test_template).pack(side=tk.LEFT, padx=2)
+        ttk.Button(template_btn_frame, text="히스토그램 테스트", command=self.test_histogram_template).pack(side=tk.LEFT, padx=2)
         ttk.Button(template_btn_frame, text="검색 및 클릭", command=self.find_and_click_selected_template).pack(side=tk.LEFT, padx=2)
 
         # 우측 패널 (규칙 및 액션)
@@ -241,7 +242,34 @@ class AutomationGUI(tk.Tk):
         
         template_name = self.template_listbox.get(selection[0])
         self.find_and_click_image(template_name)
+
+    def test_histogram_template(self):
+        """히스토그램 기반 템플릿 테스트 (회전/반전에 강인)"""
+        selection = self.template_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("경고", "테스트할 템플릿을 선택하세요.")
+            return
         
+        if not self.screenshot_hwnd:
+            messagebox.showwarning("경고", "테스트할 윈도우를 선택하세요.")
+            return
+        
+        template_name = self.template_listbox.get(selection[0])
+        
+        # 스크린샷 캡처
+        screenshot = WindowUtils.capture_window(self.screenshot_hwnd)
+        if screenshot is None:
+            messagebox.showerror("오류", "스크린샷 캡처에 실패했습니다.")
+            return
+        
+        # 히스토그램 매칭 테스트
+        found, position, confidence = self.image_recognition.find_by_histogram(
+            screenshot, template_name, threshold=0.85)
+        
+        # 결과 표시
+        self._display_template_test_result(screenshot, template_name, found, position, 
+                                        confidence, "히스토그램 매칭")
+            
     def update_window_list(self):
         """감지된 윈도우 목록 업데이트"""
         self.window_listbox.delete(0, tk.END)

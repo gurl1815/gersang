@@ -215,3 +215,101 @@ class ImageRecognition:
         x2, y2 = match2[0], match2[1]
         distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
         return distance < threshold
+    
+    def find_by_histogram(self, image, template_name, threshold=0.85):
+        """
+        색상 히스토그램을 사용하여 이미지 영역 찾기
+        (회전, 반전에 강인함)
+        
+        Args:
+            image: 검색할 이미지
+            template_name: 찾을 템플릿 이름
+            threshold: 매칭 임계값 (0.0-1.0)
+            
+        Returns:
+            tuple: (found, position, confidence)
+        """
+        if template_name not in self.templates:
+            return False, (0, 0, 0, 0), 0.0
+        
+        template = self.templates[template_name]
+        
+        if image is None or template is None:
+            return False, (0, 0, 0, 0), 0.0
+        
+        # 템플릿 크기
+        template_h, template_w = template.shape[:2]
+        
+        # 먼저 일반 템플릿 매칭으로 후보 영역 찾기
+        # (계산량 줄이기 위한 최적화)
+        result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+        locations = np.where(result >= threshold * 0.7)  # 낮은 임계값 사용
+        
+        # 후보 위치가 없으면 실패
+        if len(locations[0]) == 0:
+            return False, (0, 0, 0, 0), 0.0
+        
+        # 템플릿의 히스토그램 계산
+        template_hist = self._calc_color_histogram(template)
+        
+        # 결과 저장용 변수
+        best_match = {
+            'position': (0, 0, 0, 0),
+            'confidence': 0.0
+        }
+        
+        # 각 후보 위치에 대해 히스토그램 비교
+        for pt in zip(*locations[::-1]):  # [::-1] - (x,y) 순서로 변환
+            x, y = pt
+            
+            # 영역이 이미지 밖으로 나가면 스킵
+            if x + template_w > image.shape[1] or y + template_h > image.shape[0]:
+                continue
+            
+            # 후보 영역 추출
+            roi = image[y:y+template_h, x:x+template_w]
+            
+            # 후보 영역의 히스토그램 계산
+            roi_hist = self._calc_color_histogram(roi)
+            
+            # 히스토그램 비교
+            hist_match = cv2.compareHist(template_hist, roi_hist, cv2.HISTCMP_CORREL)
+            
+            # 더 좋은 매칭 결과 저장
+            if hist_match > best_match['confidence']:
+                best_match['position'] = (x, y, template_w, template_h)
+                best_match['confidence'] = hist_match
+        
+        # 결과 반환
+        found = best_match['confidence'] >= threshold
+        return found, best_match['position'], best_match['confidence']
+
+    def _calc_color_histogram(self, img):
+        """
+        이미지의 색상 히스토그램 계산
+        
+        Args:
+            img: 이미지
+            
+        Returns:
+            히스토그램
+        """
+        # 색상 공간을 HSV로 변환
+        if len(img.shape) == 3:  # 컬러 이미지
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            
+            # H, S, V 각각 히스토그램 계산
+            h_hist = cv2.calcHist([hsv], [0], None, [30], [0, 180])
+            s_hist = cv2.calcHist([hsv], [1], None, [32], [0, 256])
+            v_hist = cv2.calcHist([hsv], [2], None, [32], [0, 256])
+            
+            # 정규화
+            h_hist = cv2.normalize(h_hist, h_hist, 0, 1, cv2.NORM_MINMAX)
+            s_hist = cv2.normalize(s_hist, s_hist, 0, 1, cv2.NORM_MINMAX)
+            v_hist = cv2.normalize(v_hist, v_hist, 0, 1, cv2.NORM_MINMAX)
+            
+            # 히스토그램 연결
+            return np.concatenate((h_hist, s_hist, v_hist))
+        else:  # 그레이스케일
+            hist = cv2.calcHist([img], [0], None, [64], [0, 256])
+            return cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)

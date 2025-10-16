@@ -112,43 +112,31 @@ class ProgramMonitor(threading.Thread):
             if not template_name or not actions:
                 continue
             
-            # 이미지 인식
+            # 매칭 방법 확인
+            match_method = rule.get('match_method', 'template')  # 기본값은 일반 템플릿 매칭
             threshold = rule.get('threshold', 0.8)
-            found, position, confidence = self.image_recognition.find_template(
-                screenshot, template_name, threshold)
             
-            # 템플릿 발견 시 액션 실행
+            found = False
+            position = None
+            
+            # 매칭 방법에 따른 처리
+            if match_method == 'histogram':
+                # 색상 히스토그램 매칭 (회전/반전에 강인함)
+                found, position, confidence = self.image_recognition.find_by_histogram(
+                    screenshot, template_name, threshold)
+                if found:
+                    print(f"히스토그램 매칭 성공: {template_name}, 신뢰도={confidence:.3f}")
+            else:
+                # 기본 템플릿 매칭
+                found, position, confidence = self.image_recognition.find_template(
+                    screenshot, template_name, threshold)
+                if found:
+                    print(f"템플릿 매칭 성공: {template_name}, 신뢰도={confidence:.3f}")
+            
+            # 이미지 발견 시 액션 실행
             if found:
-                # 윈도우 좌표 가져오기
-                left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
-                
-                # 윈도우 활성화
-                win32gui.SetForegroundWindow(self.hwnd)
-                time.sleep(0.5)
-                
-                # 이미지 위치 계산
-                x, y, w, h = position
-                center_x = x + w // 2
-                center_y = y + h // 2
-                
-                # 화면 좌표로 변환
-                screen_x = left + center_x
-                screen_y = top + center_y
-                
-                # 직접 클릭 (선택 사항)
-                if rule.get('click_on_image', False):
-                    try:
-                        import pydirectinput
-                        pydirectinput.PAUSE = 0.1
-                        pydirectinput.moveTo(screen_x, screen_y)
-                        time.sleep(0.2)
-                        pydirectinput.click()
-                        time.sleep(0.5)
-                    except Exception as e:
-                        print(f"이미지 클릭 오류: {e}")
-                
-                # 일반 액션 실행
-                self.execute_actions(actions, position)
+                # 윈도우 활성화 및 액션 실행
+                self._process_found_template(template_name, position, actions, rule)
     
 
     def execute_actions(self, actions, position=None):
