@@ -25,10 +25,14 @@ from settings.config_manager import ConfigManager
 
 class AutomationGUI(tk.Tk):
     """윈도우 멀티 프로그램 자동화 GUI"""
-    
+        
     def __init__(self):
         super().__init__()
         
+        # 기본 설정
+        self.title("윈도우 멀티 프로그램 자동화")
+        self.geometry("900x600")
+ 
         # 기본 설정
         self.title("윈도우 멀티 프로그램 자동화")
         self.geometry("900x600")
@@ -112,12 +116,33 @@ class AutomationGUI(tk.Tk):
         self.screenshot_frame = ttk.Frame(center_frame)
         self.screenshot_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.screenshot_canvas = tk.Canvas(self.screenshot_frame, bg="lightgray")
-        self.screenshot_canvas.pack(fill=tk.BOTH, expand=True)
+        # 고정 크기 캔버스와 스크롤바 추가
+        canvas_frame = ttk.Frame(self.screenshot_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 스크롤바 추가
+        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL)
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        v_scrollbar = ttk.Scrollbar(canvas_frame)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 고정 크기 캔버스 (600x400 권장)
+        self.screenshot_canvas = tk.Canvas(canvas_frame, bg="lightgray", 
+                                        width=600, height=400,
+                                        xscrollcommand=h_scrollbar.set,
+                                        yscrollcommand=v_scrollbar.set)
+        self.screenshot_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 스크롤바와 캔버스 연결
+        h_scrollbar.config(command=self.screenshot_canvas.xview)
+        v_scrollbar.config(command=self.screenshot_canvas.yview)
+        
+        # 이벤트 바인딩 유지
         self.screenshot_canvas.bind("<ButtonPress-1>", self.on_canvas_press)
         self.screenshot_canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.screenshot_canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
-        
+
         # 템플릿 컨트롤
         template_frame = ttk.Frame(center_frame)
         template_frame.pack(fill=tk.X, padx=5, pady=5)
@@ -475,7 +500,7 @@ class AutomationGUI(tk.Tk):
             
             # 윈도우 활성화
             win32gui.SetForegroundWindow(self.screenshot_hwnd)
-            time.sleep(0.5)  # 전환 대기
+            time.sleep(0.1)  # 전환 대기
             
             # 클라이언트 영역 캡처
             import pyautogui
@@ -492,10 +517,14 @@ class AutomationGUI(tk.Tk):
             pil_img = Image.fromarray(screenshot_rgb)
             
             # 캔버스 크기 조정
-            width, height = pil_img.size
-            self.screenshot_canvas.config(width=width, height=height)
+            # width, height = pil_img.size
+            # self.screenshot_canvas.config(width=width, height=height)
             
-            # 이미지 표시
+           # 이미지 크기와 캔버스 스크롤 영역 설정
+            img_width, img_height = pil_img.size
+            self.screenshot_canvas.config(scrollregion=(0, 0, img_width, img_height))
+            
+            # 이미지 표시 (캔버스 크기는 변경하지 않음)
             img_tk = ImageTk.PhotoImage(pil_img)
             self.screenshot_canvas.delete("all")
             self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
@@ -504,7 +533,7 @@ class AutomationGUI(tk.Tk):
             # 스크린샷 저장
             self.screenshot = screenshot
             
-            self.status_var.set(f"클라이언트 영역 캡처 완료: {width}x{height}")
+            # self.status_var.set(f"클라이언트 영역 캡처 완료: {width}x{height}")
         
         except Exception as e:
             self.status_var.set(f"캡처 오류: {str(e)}")
@@ -1176,7 +1205,7 @@ class AutomationGUI(tk.Tk):
                     pil_img = Image.fromarray(screenshot_rgb)
                     
                     # 캔버스 크기 조정
-                    self.screenshot_canvas.config(width=width, height=height)
+                    #  self.screenshot_canvas.config(width=width, height=height)
                     
                     # 이미지 표시
                     img_tk = ImageTk.PhotoImage(pil_img)
