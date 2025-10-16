@@ -109,68 +109,84 @@ class WindowUtils:
         return win32gui.GetForegroundWindow() == hwnd
     
     @staticmethod
-    def capture_window(hwnd):
+    def capture_window(hwnd, method="auto"):
         """
-        윈도우 화면 캡처하기 (안정적인 방법)
+        윈도우 화면 캡처하기 (다양한 방식 지원)
         
         Args:
             hwnd (int): 윈도우 핸들
+            method (str): 캡처 방식 ("dc", "pyautogui", "auto" 중 선택)
             
         Returns:
             numpy.ndarray: 캡처된 이미지 (OpenCV 형식)
         """
         if not hwnd or not win32gui.IsWindow(hwnd):
             return None
-        
+            
         try:
-            # 윈도우 크기 가져오기
+            # 윈도우 위치와 크기
             left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-            width = right - left
-            height = bottom - top
+            width, height = right - left, bottom - top
             
             if width <= 0 or height <= 0:
                 return None
             
-            # 윈도우 DC 가져오기
-            hwnd_dc = win32gui.GetWindowDC(hwnd)
-            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-            save_dc = mfc_dc.CreateCompatibleDC()
-            
-            # 비트맵 생성
-            save_bitmap = win32ui.CreateBitmap()
-            save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
-            save_dc.SelectObject(save_bitmap)
-            
-            # 화면 복사 (윈도우 전체)
-            result = windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
-            
-            if not result:
-                # PrintWindow 실패, 대체 방법 시도
-                windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 0)
-            
-            # 비트맵 정보 가져오기
-            bmpinfo = save_bitmap.GetInfo()
-            bmpstr = save_bitmap.GetBitmapBits(True)
-            
-            # PIL 이미지로 변환
-            img = Image.frombuffer(
-                'RGB',
-                (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
-                bmpstr, 'raw', 'BGRX', 0, 1)
-            
-            # 리소스 해제
-            win32gui.DeleteObject(save_bitmap.GetHandle())
-            save_dc.DeleteDC()
-            mfc_dc.DeleteDC()
-            win32gui.ReleaseDC(hwnd, hwnd_dc)
-            
-            # OpenCV 형식으로 변환
-            return np.array(img)
+            # 방식에 따라 다른 캡처 방식 사용
+            if method == "pyautogui" or (method == "auto" and WindowUtils._is_pyautogui_available()):
+                # PyAutoGUI 방식
+                import pyautogui
+                screenshot = pyautogui.screenshot(region=(left, top, width, height))
+                screenshot = np.array(screenshot)
+                screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
+                return screenshot
+            else:
+                # DC 방식 (원래 구현)
+                hwnd_dc = win32gui.GetWindowDC(hwnd)
+                mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+                save_dc = mfc_dc.CreateCompatibleDC()
+                
+                save_bitmap = win32ui.CreateBitmap()
+                save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
+                save_dc.SelectObject(save_bitmap)
+                
+                # 화면 복사 (더 안정적인 방식)
+                result = windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+                if not result:
+                    # 실패 시 대체 방식 시도
+                    windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 0)
+                
+                # 비트맵 정보
+                bmpinfo = save_bitmap.GetInfo()
+                bmpstr = save_bitmap.GetBitmapBits(True)
+                
+                # PIL 이미지로 변환
+                img = Image.frombuffer(
+                    'RGB',
+                    (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+                    bmpstr, 'raw', 'BGRX', 0, 1)
+                
+                # 리소스 해제
+                win32gui.DeleteObject(save_bitmap.GetHandle())
+                save_dc.DeleteDC()
+                mfc_dc.DeleteDC()
+                win32gui.ReleaseDC(hwnd, hwnd_dc)
+                
+                # OpenCV 형식으로 변환
+                return np.array(img)
         
         except Exception as e:
             print(f"캡처 오류: {e}")
             return None
-    
+
+    @staticmethod
+    def _is_pyautogui_available():
+        """PyAutoGUI 라이브러리 사용 가능 여부 확인"""
+        try:
+            import pyautogui
+            return True
+        except ImportError:
+            return False
+        
     @staticmethod
     def send_mouse_click(hwnd, x, y, button='left'):
         """
@@ -307,3 +323,32 @@ class WindowUtils:
         except Exception as e:
             print(f"좌표 변환 오류: {e}")
             return (x, y)  # 오류 시 원래 좌표 반환
+        
+    @staticmethod
+    def get_client_rect(hwnd):
+        """
+        윈도우의 클라이언트 영역 가져오기
+        
+        Args:
+            hwnd (int): 윈도우 핸들
+            
+        Returns:
+            tuple: (left, top, right, bottom) 클라이언트 영역 좌표 (화면 기준)
+        """
+        import ctypes
+        from ctypes.wintypes import RECT
+        
+        # 클라이언트 영역
+        client_rect = RECT()
+        ctypes.windll.user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+        
+        # 클라이언트 영역의 좌상단 좌표 (화면 기준)
+        point = ctypes.wintypes.POINT(0, 0)
+        ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(point))
+        client_left, client_top = point.x, point.y
+        
+        # 클라이언트 영역 계산
+        client_width = client_rect.right - client_rect.left
+        client_height = client_rect.bottom - client_rect.top
+        
+        return (client_left, client_top, client_left + client_width, client_top + client_height)

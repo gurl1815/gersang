@@ -4,7 +4,6 @@ import threading
 import time
 import cv2
 import os
-import numpy as np
 import yaml
 import win32gui  # 윈도우 핸들, 윈도우 관리 기능
 import win32api  # 마우스, 키보드 이벤트, 커서 제어 등
@@ -89,29 +88,18 @@ class ProgramMonitor(threading.Thread):
                     continue
             
             # 윈도우 캡처
-            try:
-                # 윈도우 위치
-                left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
-                width, height = right - left, bottom - top
-                
-                # pyautogui로 캡처 (더 안정적인 방법)
-                import pyautogui
-                screenshot = pyautogui.screenshot(region=(left, top, width, height))
-                screenshot = np.array(screenshot)
-                screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
-                
-                if screenshot is not None and screenshot.size > 0:
-                    # 모든 규칙 확인
-                    self.check_rules(screenshot)
-            except Exception as e:
-                print(f"스크린샷 캡처 오류: {e}")
+            screenshot = WindowUtils.capture_window(self.hwnd)
+            
+            if screenshot is not None:
+                # 모든 규칙 확인
+                self.check_rules(screenshot)
             
             # 모니터링 간격 대기
             time.sleep(self.monitoring_interval)
     
     def check_rules(self, screenshot):
         """
-        규칙 확인 및 액션 실행 (유사 이미지 검색)
+        규칙 확인 및 액션 실행
         
         Args:
             screenshot (numpy.ndarray): 캡처된 윈도우 이미지
@@ -124,33 +112,43 @@ class ProgramMonitor(threading.Thread):
             if not template_name or not actions:
                 continue
             
-            # 이미지 인식 (낮은 임계값)
-            threshold = rule.get('threshold', 0.6)  # 기본값 낮춤
-            
-            # 유사성 수준 설정
-            similarity = rule.get('similarity', 'normal')
-            if similarity == 'high':     # 높은 유사성 요구
-                threshold = 0.7
-            elif similarity == 'normal': # 보통 유사성
-                threshold = 0.5
-            elif similarity == 'low':    # 낮은 유사성 (더 관대하게)
-                threshold = 0.3
-            
+            # 이미지 인식
+            threshold = rule.get('threshold', 0.8)
             found, position, confidence = self.image_recognition.find_template(
                 screenshot, template_name, threshold)
             
             # 템플릿 발견 시 액션 실행
             if found:
-                print(f"템플릿 발견: {template_name}, 신뢰도: {confidence:.4f}")
+                # 윈도우 좌표 가져오기
+                left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
+                
+                # 윈도우 활성화
+                win32gui.SetForegroundWindow(self.hwnd)
+                time.sleep(0.5)
+                
+                # 이미지 위치 계산
+                x, y, w, h = position
+                center_x = x + w // 2
+                center_y = y + h // 2
+                
+                # 화면 좌표로 변환
+                screen_x = left + center_x
+                screen_y = top + center_y
+                
+                # 직접 클릭 (선택 사항)
+                if rule.get('click_on_image', False):
+                    try:
+                        import pydirectinput
+                        pydirectinput.PAUSE = 0.1
+                        pydirectinput.moveTo(screen_x, screen_y)
+                        time.sleep(0.2)
+                        pydirectinput.click()
+                        time.sleep(0.5)
+                    except Exception as e:
+                        print(f"이미지 클릭 오류: {e}")
+                
+                # 일반 액션 실행
                 self.execute_actions(actions, position)
-                
-                # 발견 후 지정된 시간 대기 (옵션)
-                if 'wait_after_found' in rule:
-                    time.sleep(rule['wait_after_found'])
-                
-                # 한 번만 적용하는 규칙인 경우 종료
-                if rule.get('once', False):
-                    break
     
 
     def execute_actions(self, actions, position=None):
