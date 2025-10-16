@@ -28,7 +28,7 @@ class ActionExecutor:
     
     def click(self, x, y, button='left', ensure_foreground=True):
         """
-        지정된 위치 클릭
+        지정된 위치 클릭 (PyAutoGUI 사용)
         
         Args:
             x (int): 윈도우 내 X 좌표
@@ -42,12 +42,33 @@ class ActionExecutor:
         if not self.hwnd:
             return False
         
-        # 윈도우를 전면으로 가져오기 (옵션)
-        if ensure_foreground:
-            WindowUtils.set_foreground(self.hwnd)
-            time.sleep(0.1)  # 전환 대기
-        
-        return WindowUtils.send_mouse_click(self.hwnd, x, y, button)
+        try:
+            # PyAutoGUI 가져오기
+            import pyautogui
+            
+            # 윈도우를 전면으로 가져오기 (옵션)
+            if ensure_foreground:
+                WindowUtils.set_foreground(self.hwnd)
+                time.sleep(0.5)  # 전환 대기 시간 늘림
+            
+            # 윈도우 위치 가져오기
+            left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
+            
+            # 절대 화면 좌표로 변환
+            screen_x = left + int(x)
+            screen_y = top + int(y)
+            
+            # 디버그용 로그
+            print(f"클릭 시도: 윈도우 위치 ({left}, {top}, {right}, {bottom})")
+            print(f"클릭 좌표: 원본 ({x}, {y}) -> 화면 좌표 ({screen_x}, {screen_y})")
+            
+            # 클릭 실행 (duration 추가하여 더 안정적으로)
+            pyautogui.click(x=screen_x, y=screen_y, button=button.lower(), duration=0.1)
+            
+            return True
+        except Exception as e:
+            print(f"클릭 실행 오류: {e}")
+            return False
     
     def press_key(self, key, press_type='click'):
         """

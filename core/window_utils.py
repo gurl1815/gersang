@@ -111,7 +111,7 @@ class WindowUtils:
     @staticmethod
     def capture_window(hwnd):
         """
-        윈도우 화면 캡처하기
+        윈도우 화면 캡처하기 (안정적인 방법)
         
         Args:
             hwnd (int): 윈도우 핸들
@@ -121,43 +121,55 @@ class WindowUtils:
         """
         if not hwnd or not win32gui.IsWindow(hwnd):
             return None
+        
+        try:
+            # 윈도우 크기 가져오기
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            width = right - left
+            height = bottom - top
             
-        # 윈도우 크기 가져오기
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        width = right - left
-        height = bottom - top
+            if width <= 0 or height <= 0:
+                return None
+            
+            # 윈도우 DC 가져오기
+            hwnd_dc = win32gui.GetWindowDC(hwnd)
+            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            save_dc = mfc_dc.CreateCompatibleDC()
+            
+            # 비트맵 생성
+            save_bitmap = win32ui.CreateBitmap()
+            save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
+            save_dc.SelectObject(save_bitmap)
+            
+            # 화면 복사 (윈도우 전체)
+            result = windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+            
+            if not result:
+                # PrintWindow 실패, 대체 방법 시도
+                windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 0)
+            
+            # 비트맵 정보 가져오기
+            bmpinfo = save_bitmap.GetInfo()
+            bmpstr = save_bitmap.GetBitmapBits(True)
+            
+            # PIL 이미지로 변환
+            img = Image.frombuffer(
+                'RGB',
+                (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+                bmpstr, 'raw', 'BGRX', 0, 1)
+            
+            # 리소스 해제
+            win32gui.DeleteObject(save_bitmap.GetHandle())
+            save_dc.DeleteDC()
+            mfc_dc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwnd_dc)
+            
+            # OpenCV 형식으로 변환
+            return np.array(img)
         
-        # 캡처를 위한 디바이스 컨텍스트 생성
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
-        
-        # 비트맵 생성
-        save_bitmap = win32ui.CreateBitmap()
-        save_bitmap.CreateCompatibleBitmap(mfc_dc, width, height)
-        save_dc.SelectObject(save_bitmap)
-        
-        # 화면 복사
-        windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 0)
-        
-        # 비트맵 정보 가져오기
-        bmpinfo = save_bitmap.GetInfo()
-        bmpstr = save_bitmap.GetBitmapBits(True)
-        
-        # PIL 이미지로 변환
-        img = Image.frombuffer(
-            'RGB',
-            (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
-            bmpstr, 'raw', 'BGRX', 0, 1)
-        
-        # 리소스 해제
-        win32gui.DeleteObject(save_bitmap.GetHandle())
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
-        
-        # OpenCV 형식으로 변환
-        return np.array(img)
+        except Exception as e:
+            print(f"캡처 오류: {e}")
+            return None
     
     @staticmethod
     def send_mouse_click(hwnd, x, y, button='left'):
@@ -176,32 +188,46 @@ class WindowUtils:
         # 윈도우가 유효한지 확인
         if not hwnd or not win32gui.IsWindow(hwnd):
             return False
-            
-        # 클라이언트 좌표로 변환
-        client_x, client_y = WindowUtils.screen_to_client(hwnd, x, y)
         
-        # 마우스 이벤트 설정
-        if button == 'left':
-            down_msg = win32con.WM_LBUTTONDOWN
-            up_msg = win32con.WM_LBUTTONUP
-        elif button == 'right':
-            down_msg = win32con.WM_RBUTTONDOWN
-            up_msg = win32con.WM_RBUTTONUP
-        elif button == 'middle':
-            down_msg = win32con.WM_MBUTTONDOWN
-            up_msg = win32con.WM_MBUTTONUP
-        else:
+        try:
+            # 윈도우 위치 가져오기
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            
+            # 클라이언트 영역 좌표 변환 시도
+            try:
+                client_x, client_y = WindowUtils.screen_to_client(hwnd, x, y)
+            except:
+                # 변환 실패 시 원래 좌표 사용
+                client_x, client_y = x, y
+            
+            # 마우스 이벤트 설정
+            if button == 'left':
+                down_msg = win32con.WM_LBUTTONDOWN
+                up_msg = win32con.WM_LBUTTONUP
+                btn_flag = win32con.MK_LBUTTON
+            elif button == 'right':
+                down_msg = win32con.WM_RBUTTONDOWN
+                up_msg = win32con.WM_RBUTTONUP
+                btn_flag = win32con.MK_RBUTTON
+            elif button == 'middle':
+                down_msg = win32con.WM_MBUTTONDOWN
+                up_msg = win32con.WM_MBUTTONUP
+                btn_flag = win32con.MK_MBUTTON
+            else:
+                return False
+            
+            # 좌표 파라미터 생성 (MAKELONG 대신 비트 연산 사용)
+            l_param = (client_y << 16) | (client_x & 0xFFFF)
+            
+            # 클릭 이벤트 전송
+            win32gui.SendMessage(hwnd, down_msg, btn_flag, l_param)
+            time.sleep(0.1)  # 클릭 간 짧은 지연
+            win32gui.SendMessage(hwnd, up_msg, 0, l_param)
+            
+            return True
+        except Exception as e:
+            print(f"마우스 클릭 오류: {e}")
             return False
-            
-        # 좌표 파라미터 생성
-        l_param = win32api.MAKELONG(client_x, client_y)
-        
-        # 클릭 이벤트 전송
-        win32gui.SendMessage(hwnd, down_msg, win32con.MK_LBUTTON, l_param)
-        time.sleep(0.1)  # 클릭 간 짧은 지연
-        win32gui.SendMessage(hwnd, up_msg, 0, l_param)
-        
-        return True
     
     @staticmethod
     def send_key(hwnd, key, press_type='click'):
@@ -245,10 +271,18 @@ class WindowUtils:
         Returns:
             tuple: (client_x, client_y)
         """
-        point = win32api.POINT(x, y)
-        win32gui.ScreenToClient(hwnd, point)
-        return (point.x, point.y)
-    
+        try:
+            # 원래 코드에서 POINT 사용 대신 ctypes 사용
+            from ctypes import byref, c_long
+            import ctypes
+            
+            pt = ctypes.wintypes.POINT(x, y)
+            ctypes.windll.user32.ScreenToClient(hwnd, byref(pt))
+            return (pt.x, pt.y)
+        except Exception as e:
+            print(f"좌표 변환 오류: {e}")
+            return (x, y)  # 오류 시 원래 좌표 반환
+
     @staticmethod
     def client_to_screen(hwnd, x, y):
         """
@@ -262,6 +296,14 @@ class WindowUtils:
         Returns:
             tuple: (screen_x, screen_y)
         """
-        point = win32api.POINT(x, y)
-        win32gui.ClientToScreen(hwnd, point)
-        return (point.x, point.y)
+        try:
+            # 원래 코드에서 POINT 사용 대신 ctypes 사용
+            from ctypes import byref, c_long
+            import ctypes
+            
+            pt = ctypes.wintypes.POINT(x, y)
+            ctypes.windll.user32.ClientToScreen(hwnd, byref(pt))
+            return (pt.x, pt.y)
+        except Exception as e:
+            print(f"좌표 변환 오류: {e}")
+            return (x, y)  # 오류 시 원래 좌표 반환

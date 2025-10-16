@@ -4,8 +4,12 @@ import threading
 import time
 import cv2
 import os
+import numpy as np
 import yaml
-import win32gui  # 이 라인 추가
+import win32gui  # 윈도우 핸들, 윈도우 관리 기능
+import win32api  # 마우스, 키보드 이벤트, 커서 제어 등
+import win32con  # Windows 상수 정의
+import win32ui   # UI 관련 기능
 from core.window_utils import WindowUtils
 from core.image_recognition import ImageRecognition
 from core.action_executor import ActionExecutor
@@ -85,18 +89,29 @@ class ProgramMonitor(threading.Thread):
                     continue
             
             # 윈도우 캡처
-            screenshot = WindowUtils.capture_window(self.hwnd)
-            
-            if screenshot is not None:
-                # 모든 규칙 확인
-                self.check_rules(screenshot)
+            try:
+                # 윈도우 위치
+                left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
+                width, height = right - left, bottom - top
+                
+                # pyautogui로 캡처 (더 안정적인 방법)
+                import pyautogui
+                screenshot = pyautogui.screenshot(region=(left, top, width, height))
+                screenshot = np.array(screenshot)
+                screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
+                
+                if screenshot is not None and screenshot.size > 0:
+                    # 모든 규칙 확인
+                    self.check_rules(screenshot)
+            except Exception as e:
+                print(f"스크린샷 캡처 오류: {e}")
             
             # 모니터링 간격 대기
             time.sleep(self.monitoring_interval)
     
     def check_rules(self, screenshot):
         """
-        규칙 확인 및 액션 실행
+        규칙 확인 및 액션 실행 (유사 이미지 검색)
         
         Args:
             screenshot (numpy.ndarray): 캡처된 윈도우 이미지
@@ -109,49 +124,235 @@ class ProgramMonitor(threading.Thread):
             if not template_name or not actions:
                 continue
             
-            # 이미지 인식
-            threshold = rule.get('threshold', 0.8)
+            # 이미지 인식 (낮은 임계값)
+            threshold = rule.get('threshold', 0.6)  # 기본값 낮춤
+            
+            # 유사성 수준 설정
+            similarity = rule.get('similarity', 'normal')
+            if similarity == 'high':     # 높은 유사성 요구
+                threshold = 0.7
+            elif similarity == 'normal': # 보통 유사성
+                threshold = 0.5
+            elif similarity == 'low':    # 낮은 유사성 (더 관대하게)
+                threshold = 0.3
+            
             found, position, confidence = self.image_recognition.find_template(
                 screenshot, template_name, threshold)
             
             # 템플릿 발견 시 액션 실행
             if found:
+                print(f"템플릿 발견: {template_name}, 신뢰도: {confidence:.4f}")
                 self.execute_actions(actions, position)
-    
-    def execute_actions(self, actions, position=None):
-            """
-            액션 목록 실행
-            
-            Args:
-                actions (list): 실행할 액션 목록
-                position (tuple, optional): 발견된 템플릿 위치 (x, y, w, h)
-            """
-            for action in actions:
-                action_type = action.get('type')
-                params = action.get('params', {})
                 
-                # 상대 좌표 처리 (템플릿 위치 기준)
-                if position and action_type == 'click':
-                    # 상대 좌표가 사용된 경우
-                    if params.get('relative', False):
+                # 발견 후 지정된 시간 대기 (옵션)
+                if 'wait_after_found' in rule:
+                    time.sleep(rule['wait_after_found'])
+                
+                # 한 번만 적용하는 규칙인 경우 종료
+                if rule.get('once', False):
+                    break
+    
+
+    def execute_actions(self, actions, position=None):
+        """
+        액션 목록 실행
+        
+        Args:
+            actions (list): 실행할 액션 목록
+            position (tuple, optional): 발견된 템플릿 위치 (x, y, w, h)
+        """
+        for action in actions:
+            action_type = action.get('type')
+            params = action.get('params', {})
+            
+            try:
+                # 윈도우 위치 가져오기
+                left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
+                
+                # 윈도우 활성화
+                win32gui.SetForegroundWindow(self.hwnd)
+                time.sleep(0.5)
+                
+                import pydirectinput
+                pydirectinput.PAUSE = 0.1
+                
+                if action_type == 'click':
+                    # 좌표 계산
+                    if position and params.get('relative', False):
+                        # 상대 좌표 처리
                         x_rel = params.get('x', 0)
                         y_rel = params.get('y', 0)
                         
                         # 상대 위치 계산
-                        params['x'] = position[0] + int(position[2] * x_rel)
-                        params['y'] = position[1] + int(position[3] * y_rel)
+                        x = position[0] + int(position[2] * x_rel)
+                        y = position[1] + int(position[3] * y_rel)
+                    else:
+                        # 절대 좌표
+                        x = params.get('x', 0)
+                        y = params.get('y', 0)
+                    
+                    # 화면 좌표로 변환
+                    screen_x = left + int(x)
+                    screen_y = top + int(y)
+                    
+                    # 마우스 이동 및 클릭
+                    pydirectinput.moveTo(screen_x, screen_y)
+                    time.sleep(0.2)
+                    pydirectinput.click(button=params.get('button', 'left').lower())
+                    
+                    success = True
                 
-                # 액션 실행
-                success = self.action_executor.execute_action(action_type, **params)
+                elif action_type == 'key':
+                    # 키 입력
+                    key = params.get('key', 0)
+                    press_type = params.get('press_type', 'click')
+                    
+                    # 가상 키 코드를 문자로 변환
+                    key_char = chr(key) if 32 <= key <= 126 else f"{{VK{key}}}"
+                    
+                    if press_type == 'click':
+                        pydirectinput.press(key_char)
+                    elif press_type == 'down':
+                        pydirectinput.keyDown(key_char)
+                    elif press_type == 'up':
+                        pydirectinput.keyUp(key_char)
+                    
+                    success = True
                 
-                # 실패 처리 (옵션)
-                if not success and action.get('required', False):
-                    break  # 필수 액션이 실패하면 중단
+                elif action_type == 'text':
+                    # 텍스트 입력
+                    text = params.get('text', '')
+                    delay = params.get('delay', 0.01)
+                    
+                    pydirectinput.PAUSE = delay
+                    pydirectinput.write(text)
+                    
+                    success = True
+                
+                elif action_type == 'wait':
+                    # 대기
+                    time.sleep(params.get('seconds', 1))
+                    success = True
+                
+                else:
+                    # 알 수 없는 액션 타입
+                    success = False
                 
                 # 액션 후 대기
                 if 'delay' in action:
                     time.sleep(action['delay'])
+            
+            except Exception as e:
+                print(f"액션 실행 오류: {e}")
+                success = False
+                
+                # 필수 액션이 실패하면 중단
+                if action.get('required', False):
+                    break
         
+
+    def game_mode_enabled(self):
+        """게임 모드 사용 여부 확인"""
+        return self.program_config.get('game_mode', False)
+
+    def execute_game_action(self, action_type, **params):
+        """
+        게임용 액션 실행
+        """
+        try:
+            # 윈도우가 유효한지 확인
+            if not self.hwnd or not win32gui.IsWindow(self.hwnd):
+                return False
+            
+            # 윈도우 위치 가져오기
+            left, top, right, bottom = win32gui.GetWindowRect(self.hwnd)
+            
+            # 윈도우 활성화
+            win32gui.SetForegroundWindow(self.hwnd)
+            time.sleep(0.3)
+            
+            if action_type == 'click':
+                # 클릭 좌표 계산 (윈도우 내 좌표)
+                x = params.get('x', 0)
+                y = params.get('y', 0)
+                button = params.get('button', 'left')
+                
+                # 화면 좌표로 변환
+                screen_x = left + int(x)
+                screen_y = top + int(y)
+                
+                # 마우스 이동
+                win32api.SetCursorPos((screen_x, screen_y))
+                time.sleep(0.1)
+                
+                # 마우스 클릭 (DirectX 게임용)
+                if button.lower() == 'left':
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                    time.sleep(0.05)
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                elif button.lower() == 'right':
+                    win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+                    time.sleep(0.05)
+                    win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+                elif button.lower() == 'middle':
+                    win32api.mouse_event(win32con.MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0)
+                    time.sleep(0.05)
+                    win32api.mouse_event(win32con.MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0)
+                
+                return True
+                
+            elif action_type == 'key':
+                # 키 코드
+                key = params.get('key', 0)
+                press_type = params.get('press_type', 'click')
+                
+                # 하드웨어 키 입력 에뮬레이션
+                if press_type == 'click':
+                    win32api.keybd_event(key, 0, 0, 0)  # 키 다운
+                    time.sleep(0.05)
+                    win32api.keybd_event(key, 0, win32con.KEYEVENTF_KEYUP, 0)  # 키 업
+                elif press_type == 'down':
+                    win32api.keybd_event(key, 0, 0, 0)
+                elif press_type == 'up':
+                    win32api.keybd_event(key, 0, win32con.KEYEVENTF_KEYUP, 0)
+                
+                return True
+                
+            elif action_type == 'text':
+                # 텍스트와 지연 시간
+                text = params.get('text', '')
+                delay = params.get('delay', 0.01)
+                
+                # 문자 단위로 키 입력
+                for char in text:
+                    try:
+                        # ASCII 코드로 변환
+                        key_code = ord(char.upper())
+                        win32api.keybd_event(key_code, 0, 0, 0)
+                        time.sleep(0.05)
+                        win32api.keybd_event(key_code, 0, win32con.KEYEVENTF_KEYUP, 0)
+                        time.sleep(delay)
+                    except:
+                        # 특수 문자는 건너뛰기
+                        pass
+                
+                return True
+                
+            elif action_type == 'wait':
+                # 대기 시간
+                seconds = params.get('seconds', 1)
+                time.sleep(seconds)
+                return True
+                
+            else:
+                return False
+        
+        except Exception as e:
+            print(f"게임 모드 액션 실행 오류: {e}")
+            return False
+
+
+
     def pause(self):
         """모니터링 일시 정지"""
         self.paused = True

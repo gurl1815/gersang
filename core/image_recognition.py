@@ -54,9 +54,9 @@ class ImageRecognition:
         """
         self.templates[name] = image
     
-    def find_template(self, image, template_name, threshold=0.8, method=cv2.TM_CCOEFF_NORMED):
+    def find_template(self, image, template_name, threshold=0.5, method=cv2.TM_CCOEFF_NORMED):
         """
-        이미지에서 템플릿 찾기
+        이미지에서 템플릿 찾기 (유사 이미지 검색 개선 버전)
         
         Args:
             image (numpy.ndarray): 검색할 이미지
@@ -80,34 +80,69 @@ class ImageRecognition:
         if image is None or template is None:
             return False, (0, 0, 0, 0), 0.0
         
+        # 다양한 방법으로 매칭 시도
+        best_confidence = 0
+        best_position = (0, 0, 0, 0)
+        
+        # 1. 원본 이미지로 매칭 (기존 방식)
+        h, w = template.shape[:2]
+        
         # 이미지와 템플릿이 동일한 색상 채널을 가지고 있는지 확인
+        img_to_use = image
+        template_to_use = template
         if len(image.shape) != len(template.shape):
             if len(image.shape) == 3:
-                template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+                template_to_use = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
             else:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                img_to_use = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
         # 템플릿 매칭 수행
-        h, w = template.shape[:2]
-        result = cv2.matchTemplate(image, template, method)
+        try:
+            result = cv2.matchTemplate(img_to_use, template_to_use, method)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            
+            # 매칭 방법에 따라 값 조정
+            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                confidence = 1 - min_val
+                top_left = min_loc
+            else:
+                confidence = max_val
+                top_left = max_loc
+            
+            if confidence > best_confidence:
+                best_confidence = confidence
+                best_position = (top_left[0], top_left[1], w, h)
+        except:
+            pass
         
-        # 최대 매칭 위치 찾기
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        
-        # 매칭 방법에 따라 값 조정
-        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-            confidence = 1 - min_val
-            top_left = min_loc
-        else:
-            confidence = max_val
-            top_left = max_loc
+        # 2. 그레이스케일로 변환하여 매칭 (색상 무시)
+        try:
+            if len(image.shape) == 3 and len(template.shape) == 3:
+                img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+                
+                result = cv2.matchTemplate(img_gray, template_gray, method)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                
+                # 매칭 방법에 따라 값 조정
+                if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                    confidence = 1 - min_val
+                    top_left = min_loc
+                else:
+                    confidence = max_val
+                    top_left = max_loc
+                
+                if confidence > best_confidence:
+                    best_confidence = confidence
+                    best_position = (top_left[0], top_left[1], w, h)
+        except:
+            pass
         
         # 임계값과 비교
-        if confidence >= threshold:
-            position = (top_left[0], top_left[1], w, h)
-            return True, position, confidence
+        if best_confidence >= threshold:
+            return True, best_position, best_confidence
         else:
-            return False, (0, 0, 0, 0), confidence
+            return False, (0, 0, 0, 0), best_confidence
     
     def find_all_templates(self, image, template_name, threshold=0.8, method=cv2.TM_CCOEFF_NORMED):
         """
