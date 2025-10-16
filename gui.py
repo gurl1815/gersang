@@ -31,10 +31,6 @@ class AutomationGUI(tk.Tk):
         
         # 기본 설정
         self.title("윈도우 멀티 프로그램 자동화")
-        self.geometry("800x500")  # 크기 축소
-        
-        # 기본 설정
-        self.title("윈도우 멀티 프로그램 자동화")
         self.geometry("900x600")
         
         # 디렉토리 설정
@@ -70,179 +66,129 @@ class AutomationGUI(tk.Tk):
         self.load_programs()
     
     def create_widgets(self):
-        """GUI 위젯 생성 (크기 조정 버전)"""
+        """GUI 위젯 생성"""
         # 메인 프레임
         main_frame = ttk.Frame(self)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # 좌측 패널 (윈도우 목록, 프로그램 관리)
         left_frame = ttk.LabelFrame(main_frame, text="프로그램")
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=2, pady=2)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=5, pady=5)
         
         # 윈도우 목록
-        ttk.Label(left_frame, text="감지된 윈도우:").pack(anchor=tk.W, padx=2, pady=1)
-        window_frame = ttk.Frame(left_frame)
-        window_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        self.window_listbox = tk.Listbox(window_frame, width=20, height=8)
-        self.window_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        window_scrollbar = ttk.Scrollbar(window_frame, orient=tk.VERTICAL, command=self.window_listbox.yview)
-        window_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.window_listbox.config(yscrollcommand=window_scrollbar.set)
+        ttk.Label(left_frame, text="감지된 윈도우:").pack(anchor=tk.W, padx=5, pady=2)
+        self.window_listbox = tk.Listbox(left_frame, width=30, height=10)
+        self.window_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.window_listbox.bind('<<ListboxSelect>>', self.on_window_select)
         
         # 윈도우 목록 새로고침 버튼
-        ttk.Button(left_frame, text="새로고침", command=self.update_window_list).pack(fill=tk.X, padx=2, pady=1)
+        ttk.Button(left_frame, text="새로고침", command=self.update_window_list).pack(fill=tk.X, padx=5, pady=2)
         
         # 프로그램 목록
-        ttk.Label(left_frame, text="등록된 프로그램:").pack(anchor=tk.W, padx=2, pady=1)
-        program_frame = ttk.Frame(left_frame)
-        program_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        self.program_listbox = tk.Listbox(program_frame, width=20, height=8)
-        self.program_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        program_scrollbar = ttk.Scrollbar(program_frame, orient=tk.VERTICAL, command=self.program_listbox.yview)
-        program_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.program_listbox.config(yscrollcommand=program_scrollbar.set)
+        ttk.Label(left_frame, text="등록된 프로그램:").pack(anchor=tk.W, padx=5, pady=2)
+        self.program_listbox = tk.Listbox(left_frame, width=30, height=10)
+        self.program_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.program_listbox.bind('<<ListboxSelect>>', self.on_program_select)
         
         # 프로그램 관리 버튼
         btn_frame = ttk.Frame(left_frame)
-        btn_frame.pack(fill=tk.X, padx=2, pady=2)
+        btn_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Button(btn_frame, text="추가", command=self.add_program).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(btn_frame, text="제거", command=self.remove_program).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(btn_frame, text="추가", command=self.add_program).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        ttk.Button(btn_frame, text="제거", command=self.remove_program).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
         
         # 모니터링 제어
         monitor_frame = ttk.Frame(left_frame)
-        monitor_frame.pack(fill=tk.X, padx=2, pady=2)
+        monitor_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Button(monitor_frame, text="시작", command=self.start_monitoring).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(monitor_frame, text="중지", command=self.stop_monitoring).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(monitor_frame, text="시작", command=self.start_monitoring).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        ttk.Button(monitor_frame, text="중지", command=self.stop_monitoring).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
         
         # 중앙 패널 (스크린샷, 템플릿 관리)
-        center_frame = ttk.LabelFrame(main_frame, text="화면 캡처")
-        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
+        center_frame = ttk.LabelFrame(main_frame, text="화면 캡처 및 템플릿")
+        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # 스크린샷 영역 (스크롤 추가)
-        screenshot_outer_frame = ttk.Frame(center_frame)
-        screenshot_outer_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        # 스크린샷 영역
+        self.screenshot_frame = ttk.Frame(center_frame)
+        self.screenshot_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.screenshot_canvas = tk.Canvas(screenshot_outer_frame, bg="lightgray", width=400, height=300)
-        self.screenshot_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # 스크롤바 추가
-        h_scrollbar = ttk.Scrollbar(screenshot_outer_frame, orient=tk.HORIZONTAL, command=self.screenshot_canvas.xview)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        v_scrollbar = ttk.Scrollbar(screenshot_outer_frame, orient=tk.VERTICAL, command=self.screenshot_canvas.yview)
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.screenshot_canvas.config(xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set)
-        
-        # 캔버스 이벤트 바인딩
+        self.screenshot_canvas = tk.Canvas(self.screenshot_frame, bg="lightgray")
+        self.screenshot_canvas.pack(fill=tk.BOTH, expand=True)
         self.screenshot_canvas.bind("<ButtonPress-1>", self.on_canvas_press)
         self.screenshot_canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.screenshot_canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
         
         # 템플릿 컨트롤
         template_frame = ttk.Frame(center_frame)
-        template_frame.pack(fill=tk.X, padx=2, pady=2)
+        template_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Button(template_frame, text="캡처", command=self.capture_screenshot).pack(side=tk.LEFT)
-        ttk.Button(template_frame, text="저장", command=self.save_template).pack(side=tk.LEFT)
-        
+        ttk.Button(template_frame, text="화면 캡처", command=self.capture_screenshot).pack(side=tk.LEFT, padx=2)
+        ttk.Button(template_frame, text="영역 저장", command=self.save_template).pack(side=tk.LEFT, padx=2)
+
         self.template_name_var = tk.StringVar()
-        ttk.Entry(template_frame, textvariable=self.template_name_var, width=10).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Entry(template_frame, textvariable=self.template_name_var).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
         
-        # 템플릿 목록 (컴팩트하게)
-        template_list_frame = ttk.Frame(center_frame)
-        template_list_frame.pack(fill=tk.X, padx=2, pady=2)
-        
-        ttk.Label(template_list_frame, text="템플릿:").pack(side=tk.LEFT)
-        
-        self.template_listbox = tk.Listbox(template_list_frame, height=3, width=15)
-        self.template_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        template_scrollbar = ttk.Scrollbar(template_list_frame, orient=tk.VERTICAL, command=self.template_listbox.yview)
-        template_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.template_listbox.config(yscrollcommand=template_scrollbar.set)
+        # 템플릿 목록
+        ttk.Label(center_frame, text="템플릿 목록:").pack(anchor=tk.W, padx=5, pady=2)
+        self.template_listbox = tk.Listbox(center_frame, height=5)
+        self.template_listbox.pack(fill=tk.X, padx=5, pady=2)
         self.template_listbox.bind('<<ListboxSelect>>', self.on_template_select)
         
         # 템플릿 관리 버튼
         template_btn_frame = ttk.Frame(center_frame)
-        template_btn_frame.pack(fill=tk.X, padx=2, pady=2)
+        template_btn_frame.pack(fill=tk.X, padx=5, pady=2)
         
-        ttk.Button(template_btn_frame, text="제거", command=self.remove_template, width=8).pack(side=tk.LEFT)
-        ttk.Button(template_btn_frame, text="테스트", command=self.test_template, width=8).pack(side=tk.LEFT)
-        ttk.Button(template_btn_frame, text="찾기", command=self.find_and_click_selected_template, width=6).pack(side=tk.LEFT)
-        
-        # 임계값 설정
-        threshold_frame = ttk.Frame(center_frame)
-        threshold_frame.pack(fill=tk.X, padx=2, pady=2)
-        
-        ttk.Label(threshold_frame, text="임계값:").pack(side=tk.LEFT)
-        self.threshold_var = tk.DoubleVar(value=0.5)
-        threshold_scale = ttk.Scale(threshold_frame, from_=0.1, to=0.9, variable=self.threshold_var, orient=tk.HORIZONTAL)
-        threshold_scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        threshold_label = ttk.Label(threshold_frame, textvariable=self.threshold_var, width=4)
-        threshold_label.pack(side=tk.LEFT)
-        
-        # 우측 패널 (규칙 및 액션) - 더 컴팩트하게
-        right_frame = ttk.LabelFrame(main_frame, text="규칙/액션")
-        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
+        ttk.Button(template_btn_frame, text="제거", command=self.remove_template).pack(side=tk.LEFT, padx=2)
+        ttk.Button(template_btn_frame, text="테스트", command=self.test_template).pack(side=tk.LEFT, padx=2)
+        ttk.Button(template_btn_frame, text="검색 및 클릭", command=self.find_and_click_selected_template).pack(side=tk.LEFT, padx=2)
+
+        # 우측 패널 (규칙 및 액션)
+        right_frame = ttk.LabelFrame(main_frame, text="규칙 및 액션")
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=5, pady=5, ipadx=5, ipady=5)
         
         # 규칙 목록
-        rule_frame = ttk.Frame(right_frame)
-        rule_frame.pack(fill=tk.X, padx=2, pady=2)
-        
-        ttk.Label(rule_frame, text="규칙:").pack(side=tk.LEFT)
-        
-        rule_list_frame = ttk.Frame(right_frame)
-        rule_list_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        self.rule_listbox = tk.Listbox(rule_list_frame, width=20, height=6)
-        self.rule_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        rule_scrollbar = ttk.Scrollbar(rule_list_frame, orient=tk.VERTICAL, command=self.rule_listbox.yview)
-        rule_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.rule_listbox.config(yscrollcommand=rule_scrollbar.set)
+        ttk.Label(right_frame, text="규칙 목록:").pack(anchor=tk.W, padx=5, pady=2)
+        self.rule_listbox = tk.Listbox(right_frame, width=30, height=10)
+        self.rule_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.rule_listbox.bind('<<ListboxSelect>>', self.on_rule_select)
         
         # 규칙 관리 버튼
         rule_btn_frame = ttk.Frame(right_frame)
-        rule_btn_frame.pack(fill=tk.X, padx=2, pady=2)
+        rule_btn_frame.pack(fill=tk.X, padx=5, pady=2)
         
-        ttk.Button(rule_btn_frame, text="추가", command=self.add_rule, width=8).pack(side=tk.LEFT)
-        ttk.Button(rule_btn_frame, text="제거", command=self.remove_rule, width=8).pack(side=tk.LEFT)
+        ttk.Button(rule_btn_frame, text="추가", command=self.add_rule).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        ttk.Button(rule_btn_frame, text="제거", command=self.remove_rule).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
         
-        # 액션 영역 - 탭으로 정리
+        # 액션 영역
         action_frame = ttk.LabelFrame(right_frame, text="액션")
-        action_frame.pack(fill=tk.BOTH, padx=2, pady=2)
+        action_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 액션 타입 선택
         action_type_frame = ttk.Frame(action_frame)
-        action_type_frame.pack(fill=tk.X, padx=2, pady=2)
+        action_type_frame.pack(fill=tk.X, padx=5, pady=2)
         
         ttk.Label(action_type_frame, text="타입:").pack(side=tk.LEFT)
         
         self.action_type_var = tk.StringVar()
-        action_types = ["클릭", "키 입력", "텍스트", "대기"]
-        self.action_type_combo = ttk.Combobox(action_type_frame, textvariable=self.action_type_var, 
-                                            values=action_types, state="readonly", width=8)
-        self.action_type_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        action_types = ["클릭", "키 입력", "텍스트 입력", "대기"]
+        self.action_type_combo = ttk.Combobox(action_type_frame, textvariable=self.action_type_var, values=action_types, state="readonly")
+        self.action_type_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.action_type_combo.current(0)
         self.action_type_combo.bind("<<ComboboxSelected>>", self.on_action_type_change)
         
-        # 액션 파라미터 영역
+        # 액션 파라미터 영역 (동적으로 변경)
         self.action_params_frame = ttk.Frame(action_frame)
-        self.action_params_frame.pack(fill=tk.X, padx=2, pady=2)
+        self.action_params_frame.pack(fill=tk.X, padx=5, pady=5)
         
         # 기본 액션 파라미터 (클릭)
         self.show_click_params()
         
         # 액션 관리 버튼
         action_btn_frame = ttk.Frame(action_frame)
-        action_btn_frame.pack(fill=tk.X, padx=2, pady=2)
+        action_btn_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Button(action_btn_frame, text="추가", command=self.add_action, width=8).pack(side=tk.LEFT)
-        ttk.Button(action_btn_frame, text="테스트", command=self.test_action, width=8).pack(side=tk.LEFT)
+        ttk.Button(action_btn_frame, text="추가", command=self.add_action).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        ttk.Button(action_btn_frame, text="테스트", command=self.test_action).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
         
         # 상태 바
         self.status_var = tk.StringVar()
@@ -402,63 +348,72 @@ class AutomationGUI(tk.Tk):
             self.show_wait_params()
     
     def show_click_params(self):
-        """클릭 액션 파라미터 UI (간결 버전)"""
-        # 좌표 프레임
-        coord_frame = ttk.Frame(self.action_params_frame)
-        coord_frame.pack(fill=tk.X, pady=1)
+        """클릭 액션 파라미터 UI"""
+        # X 좌표
+        x_frame = ttk.Frame(self.action_params_frame)
+        x_frame.pack(fill=tk.X, padx=2, pady=2)
         
-        # X, Y 좌표 (한 줄에)
-        ttk.Label(coord_frame, text="X:").pack(side=tk.LEFT)
-        self.click_x_var = tk.StringVar(value="0.5")
-        ttk.Entry(coord_frame, textvariable=self.click_x_var, width=4).pack(side=tk.LEFT, padx=1)
+        ttk.Label(x_frame, text="X:").pack(side=tk.LEFT)
+        self.click_x_var = tk.StringVar(value="0")
+        ttk.Entry(x_frame, textvariable=self.click_x_var, width=8).pack(side=tk.LEFT, padx=2)
         
-        ttk.Label(coord_frame, text="Y:").pack(side=tk.LEFT, padx=(5, 0))
-        self.click_y_var = tk.StringVar(value="0.5")
-        ttk.Entry(coord_frame, textvariable=self.click_y_var, width=4).pack(side=tk.LEFT, padx=1)
+        ttk.Label(x_frame, text="Y:").pack(side=tk.LEFT, padx=(10, 0))
+        self.click_y_var = tk.StringVar(value="0")
+        ttk.Entry(x_frame, textvariable=self.click_y_var, width=8).pack(side=tk.LEFT, padx=2)
         
-        # 버튼 및 상대좌표 (한 줄에)
-        ttk.Label(coord_frame, text="버튼:").pack(side=tk.LEFT, padx=(5, 0))
+        # 버튼 타입
+        button_frame = ttk.Frame(self.action_params_frame)
+        button_frame.pack(fill=tk.X, padx=2, pady=2)
+        
+        ttk.Label(button_frame, text="버튼:").pack(side=tk.LEFT)
         self.click_button_var = tk.StringVar(value="left")
-        ttk.Combobox(coord_frame, textvariable=self.click_button_var, 
-                    values=["left", "right", "middle"], state="readonly", width=5).pack(side=tk.LEFT, padx=1)
+        button_combo = ttk.Combobox(button_frame, textvariable=self.click_button_var, 
+                                     values=["left", "right", "middle"], state="readonly", width=10)
+        button_combo.pack(side=tk.LEFT, padx=2)
         
         # 상대 좌표 여부
         self.click_relative_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.action_params_frame, text="상대좌표", variable=self.click_relative_var).pack(fill=tk.X)
+        ttk.Checkbutton(self.action_params_frame, text="템플릿 기준 상대 좌표", 
+                        variable=self.click_relative_var).pack(anchor=tk.W, padx=2, pady=2)
         
         # 지연 시간
         delay_frame = ttk.Frame(self.action_params_frame)
-        delay_frame.pack(fill=tk.X)
+        delay_frame.pack(fill=tk.X, padx=2, pady=2)
         
         ttk.Label(delay_frame, text="지연(초):").pack(side=tk.LEFT)
         self.action_delay_var = tk.StringVar(value="0.5")
-        ttk.Entry(delay_frame, textvariable=self.action_delay_var, width=4).pack(side=tk.LEFT, padx=1)
-
+        ttk.Entry(delay_frame, textvariable=self.action_delay_var, width=6).pack(side=tk.LEFT, padx=2)
+    
     def show_key_params(self):
-        """키 입력 액션 파라미터 UI (간결 버전)"""
-        # 키 프레임
+        """키 입력 액션 파라미터 UI"""
+        # 키 코드
         key_frame = ttk.Frame(self.action_params_frame)
-        key_frame.pack(fill=tk.X, pady=1)
+        key_frame.pack(fill=tk.X, padx=2, pady=2)
         
-        # 키 및 타입 (한 줄에)
         ttk.Label(key_frame, text="키:").pack(side=tk.LEFT)
+        
         self.key_var = tk.StringVar()
-        key_entry = ttk.Entry(key_frame, textvariable=self.key_var, width=5)
-        key_entry.pack(side=tk.LEFT, padx=1)
+        key_entry = ttk.Entry(key_frame, textvariable=self.key_var, width=15)
+        key_entry.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
         key_entry.bind("<KeyPress>", self.on_key_press)
         
-        ttk.Label(key_frame, text="타입:").pack(side=tk.LEFT, padx=(5, 0))
+        # 입력 타입
+        press_frame = ttk.Frame(self.action_params_frame)
+        press_frame.pack(fill=tk.X, padx=2, pady=2)
+        
+        ttk.Label(press_frame, text="입력 타입:").pack(side=tk.LEFT)
         self.key_press_type_var = tk.StringVar(value="click")
-        ttk.Combobox(key_frame, textvariable=self.key_press_type_var, 
-                values=["click", "down", "up"], state="readonly", width=5).pack(side=tk.LEFT, padx=1)
+        press_combo = ttk.Combobox(press_frame, textvariable=self.key_press_type_var, 
+                                   values=["click", "down", "up"], state="readonly", width=10)
+        press_combo.pack(side=tk.LEFT, padx=2)
         
         # 지연 시간
         delay_frame = ttk.Frame(self.action_params_frame)
-        delay_frame.pack(fill=tk.X)
+        delay_frame.pack(fill=tk.X, padx=2, pady=2)
         
         ttk.Label(delay_frame, text="지연(초):").pack(side=tk.LEFT)
         self.action_delay_var = tk.StringVar(value="0.5")
-        ttk.Entry(delay_frame, textvariable=self.action_delay_var, width=4).pack(side=tk.LEFT, padx=1)
+        ttk.Entry(delay_frame, textvariable=self.action_delay_var, width=6).pack(side=tk.LEFT, padx=2)
     
     def on_key_press(self, event):
         """키 입력 감지"""
@@ -503,68 +458,44 @@ class AutomationGUI(tk.Tk):
         ttk.Entry(wait_frame, textvariable=self.wait_seconds_var, width=6).pack(side=tk.LEFT, padx=2)
     
     def capture_screenshot(self):
-        """선택된 윈도우 스크린샷 캡처 (다양한 방법 시도)"""
+        """선택된 윈도우의 클라이언트 영역 스크린샷 캡처"""
         if not self.screenshot_hwnd:
             messagebox.showwarning("경고", "캡처할 윈도우를 먼저 선택하세요.")
             return
         
         try:
-            # 윈도우 정보
-            left, top, right, bottom = win32gui.GetWindowRect(self.screenshot_hwnd)
-            width = right - left
-            height = bottom - top
+            # 상태 표시
+            self.status_var.set(f"캡처 중... 윈도우 핸들: {self.screenshot_hwnd}")
+            self.update()  # GUI 업데이트
             
-            # 방법 1: WindowUtils 사용
-            screenshot = WindowUtils.capture_window(self.screenshot_hwnd)
+            # 클라이언트 영역 가져오기
+            client_left, client_top, client_right, client_bottom = self.get_client_rect(self.screenshot_hwnd)
+            client_width = client_right - client_left
+            client_height = client_bottom - client_top
             
-            # 방법 1이 실패하면 방법 2 시도: pyautogui 사용
-            if screenshot is None or screenshot.size == 0:
-                self.status_var.set("기본 캡처 실패, 대체 방법 시도 중...")
-                self.update()
-                
-                import pyautogui
-                screenshot = pyautogui.screenshot(region=(left, top, width, height))
-                screenshot = np.array(screenshot)
-                screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
+            # 윈도우 활성화
+            win32gui.SetForegroundWindow(self.screenshot_hwnd)
+            time.sleep(0.5)  # 전환 대기
+            
+            # 클라이언트 영역 캡처
+            import pyautogui
+            screenshot = pyautogui.screenshot(region=(client_left, client_top, client_width, client_height))
+            screenshot = np.array(screenshot)
+            screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
             
             if screenshot is None or screenshot.size == 0:
                 messagebox.showerror("오류", "스크린샷 캡처에 실패했습니다.")
                 return
             
-            # 원본 이미지 저장
-            self.original_screenshot = screenshot.copy()
-            original_h, original_w = screenshot.shape[:2]
-            
-            # 크기 조정 (UI에 맞게)
-            max_width = 400   # 캔버스 최대 너비
-            max_height = 300  # 캔버스 최대 높이
-            
-            # 이미지가 너무 크면 비율 유지하며 축소
-            if original_w > max_width or original_h > max_height:
-                # 축소 비율 계산
-                ratio = min(max_width / original_w, max_height / original_h)
-                
-                # 새 크기 계산 (비율 유지)
-                new_width = int(original_w * ratio)
-                new_height = int(original_h * ratio)
-                
-                # 이미지 크기 조정
-                screenshot = cv2.resize(screenshot, (new_width, new_height), interpolation=cv2.INTER_AREA)
-                
-                # 크기 조정 비율 저장 (좌표 계산에 사용)
-                self.resize_ratio = ratio
-                self.status_var.set(f"이미지 크기 조정됨: {original_w}x{original_h} -> {new_width}x{new_height}")
-            else:
-                self.resize_ratio = 1.0
-            
             # OpenCV 이미지를 PIL 이미지로 변환
             screenshot_rgb = cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(screenshot_rgb)
             
-            # 이미지 표시
-            img_width, img_height = pil_img.size
-            self.screenshot_canvas.config(scrollregion=(0, 0, img_width, img_height))
+            # 캔버스 크기 조정
+            width, height = pil_img.size
+            self.screenshot_canvas.config(width=width, height=height)
             
+            # 이미지 표시
             img_tk = ImageTk.PhotoImage(pil_img)
             self.screenshot_canvas.delete("all")
             self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
@@ -573,7 +504,7 @@ class AutomationGUI(tk.Tk):
             # 스크린샷 저장
             self.screenshot = screenshot
             
-            self.status_var.set(f"캡처 완료: {img_width}x{img_height}")
+            self.status_var.set(f"클라이언트 영역 캡처 완료: {width}x{height}")
         
         except Exception as e:
             self.status_var.set(f"캡처 오류: {str(e)}")
@@ -634,7 +565,7 @@ class AutomationGUI(tk.Tk):
                 self.click_y_var.set("0.5")
     
     def save_template(self):
-        """선택된 영역을 템플릿으로 저장 (크기 조정 고려)"""
+        """선택된 영역을 템플릿으로 저장"""
         if not self.screenshot is None and self.select_rect:
             # 템플릿 이름 확인
             template_name = self.template_name_var.get().strip()
@@ -653,19 +584,8 @@ class AutomationGUI(tk.Tk):
                 messagebox.showwarning("경고", "선택 영역이 너무 작습니다.")
                 return
             
-            # 크기 조정된 이미지에서 선택한 좌표를 원본 이미지 좌표로 변환
-            if hasattr(self, 'resize_ratio') and self.resize_ratio != 1.0 and hasattr(self, 'original_screenshot'):
-                # 원본 좌표 계산
-                orig_x1 = int(x1 / self.resize_ratio)
-                orig_y1 = int(y1 / self.resize_ratio)
-                orig_x2 = int(x2 / self.resize_ratio)
-                orig_y2 = int(y2 / self.resize_ratio)
-                
-                # 원본 이미지에서 템플릿 추출
-                template = self.original_screenshot[orig_y1:orig_y2, orig_x1:orig_x2]
-            else:
-                # 크기 조정 없는 경우
-                template = self.screenshot[y1:y2, x1:x2]
+            # 템플릿 이미지 추출
+            template = self.screenshot[y1:y2, x1:x2]
             
             # 파일 저장
             template_path = os.path.join(self.templates_dir, f"{template_name}.png")
@@ -674,6 +594,7 @@ class AutomationGUI(tk.Tk):
             # 템플릿 목록 업데이트
             self.update_template_list()
             
+            # 상태 업데이트
             self.status_var.set(f"템플릿 저장 완료: {template_name}.png")
         else:
             messagebox.showwarning("경고", "영역을 선택하세요.")
