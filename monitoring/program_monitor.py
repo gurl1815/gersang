@@ -337,7 +337,51 @@ class ProgramMonitor(threading.Thread):
             print(f"게임 모드 액션 실행 오류: {e}")
             return False
 
-
+    def _process_found_template(self, template_name, position, actions, rule):
+        """
+        템플릿이 발견되었을 때 액션 처리
+        
+        Args:
+            template_name (str): 발견된 템플릿 이름
+            position (tuple): 발견된 위치 (x, y, w, h)
+            actions (list): 실행할 액션 목록
+            rule (dict): 규칙 설정 정보
+        """
+        try:
+            print(f"템플릿 '{template_name}' 발견: 위치={position}")
+            
+            # 윈도우 활성화 시도
+            if self.hwnd and win32gui.IsWindow(self.hwnd):
+                WindowUtils.set_foreground(self.hwnd)
+                time.sleep(0.3)  # 윈도우 활성화 대기
+            
+            # 이미지 클릭 여부 확인 (규칙에 명시된 경우)
+            if rule.get('click_on_image', False):
+                try:
+                    # 이미지 위치 계산
+                    x, y, w, h = position
+                    center_x = x + w // 2
+                    center_y = y + h // 2
+                    
+                    # 클릭 실행 (현재 윈도우 내 좌표)
+                    self.action_executor.execute_action('click', 
+                                                    x=center_x, 
+                                                    y=center_y, 
+                                                    button='left',
+                                                    ensure_foreground=True)
+                    
+                    # 클릭 후 약간의 지연
+                    time.sleep(0.2)
+                except Exception as e:
+                    print(f"이미지 클릭 오류: {e}")
+            
+            # 정의된 액션 실행
+            self.execute_actions(actions, position)
+            
+            return True
+        except Exception as e:
+            print(f"템플릿 처리 오류: {e}")
+            return False
 
     def pause(self):
         """모니터링 일시 정지"""

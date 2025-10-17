@@ -22,6 +22,7 @@ from core.action_executor import ActionExecutor
 from monitoring.program_monitor import ProgramMonitor
 from monitoring.monitor_manager import MonitorManager
 from settings.config_manager import ConfigManager
+from monitoring.auto_click_monitor import AutoClickMonitor
 
 class AutomationGUI(tk.Tk):
     """윈도우 멀티 프로그램 자동화 GUI"""
@@ -31,11 +32,7 @@ class AutomationGUI(tk.Tk):
         
         # 기본 설정
         self.title("윈도우 멀티 프로그램 자동화")
-        self.geometry("900x600")
- 
-        # 기본 설정
-        self.title("윈도우 멀티 프로그램 자동화")
-        self.geometry("900x600")
+        self.geometry("900x700")
         
         # 디렉토리 설정
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -63,7 +60,8 @@ class AutomationGUI(tk.Tk):
         # 스크린샷 데이터
         self.screenshot = None
         self.screenshot_hwnd = None
-        
+        self.auto_click_monitor = None
+
         # GUI 초기화
         self.create_widgets()
         self.update_window_list()
@@ -167,6 +165,8 @@ class AutomationGUI(tk.Tk):
         ttk.Button(template_btn_frame, text="테스트", command=self.test_template).pack(side=tk.LEFT, padx=2)
         ttk.Button(template_btn_frame, text="히스토그램 테스트", command=self.test_histogram_template).pack(side=tk.LEFT, padx=2)
         ttk.Button(template_btn_frame, text="검색 및 클릭", command=self.find_and_click_selected_template).pack(side=tk.LEFT, padx=2)
+        self.auto_search_btn = ttk.Button(template_btn_frame, text="자동 검색 시작", command=self.toggle_auto_search)
+        self.auto_search_btn.pack(side=tk.LEFT, padx=2)
 
         # 우측 패널 (규칙 및 액션)
         right_frame = ttk.LabelFrame(main_frame, text="규칙 및 액션")
@@ -243,6 +243,48 @@ class AutomationGUI(tk.Tk):
         template_name = self.template_listbox.get(selection[0])
         self.find_and_click_image(template_name)
 
+    def toggle_auto_search(self):
+        """자동 검색 모드 전환"""
+        # 자동 모드가 이미 실행 중인지 확인
+        if self.auto_click_monitor and hasattr(self.auto_click_monitor, 'running') and self.auto_click_monitor.running:
+            # 중지
+            self.auto_click_monitor.stop()
+            self.auto_click_monitor = None
+            self.auto_search_btn.configure(text="자동 검색 시작")
+            self.status_var.set("자동 검색이 중지되었습니다.")
+        else:
+            # 시작
+            selection = self.template_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("경고", "템플릿을 선택하세요.")
+                return
+                
+            template_name = self.template_listbox.get(selection[0])
+            
+            if not self.screenshot_hwnd:
+                messagebox.showwarning("경고", "먼저 대상 윈도우를 선택하세요.")
+                return
+                
+            try:
+                # 간격은 5초로 고정 (필요시 UI를 통해 조정 가능)
+                interval = 1.0
+                threshold = 0.7  # 임계값도 필요시 조정 가능
+                
+                # 모니터 생성 및 시작
+                self.auto_click_monitor = AutoClickMonitor(
+                    self, self.screenshot_hwnd, template_name, interval, threshold
+                )
+                success = self.auto_click_monitor.start()
+                
+                if success:
+                    self.auto_search_btn.configure(text="자동 검색 중지")
+                    self.status_var.set(f"자동 검색 시작: {template_name}, 간격={interval}초")
+                else:
+                    self.status_var.set("자동 검색 시작 실패")
+            except Exception as e:
+                messagebox.showerror("오류", f"자동 검색 시작 오류: {str(e)}")
+                self.status_var.set(f"오류: {str(e)}")
+                
     def test_histogram_template(self):
         """히스토그램 기반 템플릿 테스트 (회전/반전에 강인)"""
         selection = self.template_listbox.curselection()
@@ -253,6 +295,10 @@ class AutomationGUI(tk.Tk):
         if not self.screenshot_hwnd:
             messagebox.showwarning("경고", "테스트할 윈도우를 선택하세요.")
             return
+        
+        # 윈도우 정보 출력 (디버깅)
+        window_title = win32gui.GetWindowText(self.screenshot_hwnd)
+        print(f"선택된 윈도우: '{window_title}' (핸들: {self.screenshot_hwnd})")
         
         template_name = self.template_listbox.get(selection[0])
         
@@ -269,7 +315,63 @@ class AutomationGUI(tk.Tk):
         # 결과 표시
         self._display_template_test_result(screenshot, template_name, found, position, 
                                         confidence, "히스토그램 매칭")
+
+    def _display_template_test_result(self, screenshot, template_name, found, position, confidence, method_name="템플릿 매칭"):
+        """
+        템플릿 테스트 결과를 화면에 표시
+        
+        Args:
+            screenshot (numpy.ndarray): 캡처된 스크린샷
+            template_name (str): 테스트한 템플릿 이름
+            found (bool): 발견 여부
+            position (tuple): 발견된 위치 (x, y, w, h)
+            confidence (float): 매칭 신뢰도
+            method_name (str): 매칭 방법 이름
+        """
+        # 결과 표시용 이미지 생성
+        result_img = screenshot.copy()
+        
+        # 캔버스에 이미지 표시 준비
+        screenshot_rgb = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(screenshot_rgb)
+        
+        # 이미지 크기 계산
+        img_width, img_height = pil_img.size
+        
+        # 캔버스 스크롤 영역 설정
+        self.screenshot_canvas.config(scrollregion=(0, 0, img_width, img_height))
+        
+        # 이미지를 캔버스에 표시
+        img_tk = ImageTk.PhotoImage(pil_img)
+        self.screenshot_canvas.delete("all")
+        self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
+        self.screenshot_canvas.image = img_tk  # 참조 유지
+        
+        # 발견된 경우 결과 표시
+        if found:
+            x, y, w, h = position
             
+            # 발견된 영역 사각형 표시
+            self.screenshot_canvas.create_rectangle(
+                x, y, x + w, y + h,
+                outline="green", width=2, tags="found"
+            )
+            
+            # 중앙점 계산 및 표시
+            center_x = x + w // 2
+            center_y = y + h // 2
+            self.screenshot_canvas.create_oval(
+                center_x - 5, center_y - 5, center_x + 5, center_y + 5,
+                fill="red", outline="red", tags="center"
+            )
+            
+            self.status_var.set(f"{method_name} 성공: {template_name}, 신뢰도={confidence:.4f}")
+        else:
+            self.status_var.set(f"{method_name} 실패: {template_name}, 최대 신뢰도={confidence:.4f}")
+        
+        # GUI 업데이트
+        self.update()
+
     def update_window_list(self):
         """감지된 윈도우 목록 업데이트"""
         self.window_listbox.delete(0, tk.END)
@@ -1145,7 +1247,7 @@ class AutomationGUI(tk.Tk):
  
             
     def find_and_click_image(self, template_name, threshold=0.5):
-        """템플릿 이미지를 찾아 클릭 (디버깅 강화 버전)"""
+        """템플릿 이미지를 찾아 직접 마우스 이벤트 전송"""
         if not self.screenshot_hwnd:
             messagebox.showwarning("경고", "대상 윈도우를 선택하세요.")
             return False
@@ -1155,192 +1257,289 @@ class AutomationGUI(tk.Tk):
             self.status_var.set(f"이미지 검색 시작: {template_name}")
             self.update()
             
-            # 윈도우 활성화
-            win32gui.SetForegroundWindow(self.screenshot_hwnd)
-            time.sleep(0.5)
-            
-            # 윈도우 정보 가져오기 및 표시
-            left, top, right, bottom = win32gui.GetWindowRect(self.screenshot_hwnd)
-            width, height = right - left, bottom - top
-            
+            # 윈도우 정보 확인
             window_title = win32gui.GetWindowText(self.screenshot_hwnd)
             print(f"타겟 윈도우: '{window_title}' (핸들: {self.screenshot_hwnd})")
-            print(f"윈도우 위치: ({left}, {top}, {right}, {bottom}), 크기: {width}x{height}")
             
-            # 템플릿 이미지 정보 확인
-            template_path = os.path.join(self.templates_dir, f"{template_name}.png")
-            if not os.path.exists(template_path):
-                self.status_var.set(f"템플릿 이미지 파일 없음: {template_path}")
-                messagebox.showerror("오류", f"템플릿 이미지를 찾을 수 없습니다: {template_name}")
+            # 윈도우 위치 가져오기
+            left, top, right, bottom = win32gui.GetWindowRect(self.screenshot_hwnd)
+            print(f"윈도우 위치: ({left}, {top}, {right}, {bottom}), 크기: {right-left}x{bottom-top}")
+            
+            # 스크린샷 캡처 (윈도우 활성화 없이)
+            screenshot = WindowUtils.capture_window(self.screenshot_hwnd)
+            if screenshot is None:
+                self.status_var.set("스크린샷 캡처 실패")
                 return False
-            
-            # 템플릿 이미지 크기 확인
-            template = cv2.imread(template_path)
-            if template is None:
-                self.status_var.set(f"템플릿 이미지 로드 실패: {template_path}")
-                messagebox.showerror("오류", f"템플릿 이미지 로드에 실패했습니다: {template_name}")
-                return False
-            
-            template_h, template_w = template.shape[:2]
-            print(f"템플릿 이미지: {template_name}.png (크기: {template_w}x{template_h})")
-            
-            # 스크린샷 캡처
-            import pyautogui
-            screenshot = pyautogui.screenshot(region=(left, top, width, height))
-            screenshot = np.array(screenshot)
-            screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
-            
-            # 캡처 이미지 임시 저장 (디버깅용)
-            debug_dir = os.path.join(self.base_dir, 'debug')
-            os.makedirs(debug_dir, exist_ok=True)
-            debug_path = os.path.join(debug_dir, 'last_capture.png')
-            cv2.imwrite(debug_path, screenshot)
-            print(f"디버깅용 캡처 저장: {debug_path}")
             
             # 이미지 인식
-            self.status_var.set(f"이미지 인식 수행 중...")
-            self.update()
-            
-            # 인식 결과
             found, position, confidence = self.image_recognition.find_template(
                 screenshot, template_name, threshold=threshold
             )
             
             if found:
-                # 이미지 발견, 위치 정보
+                # 이미지 발견 정보
                 x, y, w, h = position
                 center_x = x + w // 2
                 center_y = y + h // 2
+                print(f"이미지 발견: 위치=({x}, {y}), 중심=({center_x}, {center_y}), 신뢰도={confidence:.4f}")
                 
-                print(f"이미지 발견: 위치=({x}, {y}), 크기={w}x{h}, 중심=({center_x}, {center_y}), 신뢰도={confidence:.4f}")
-                self.status_var.set(f"이미지 발견: 위치=({x}, {y}), 신뢰도={confidence:.4f}")
-                self.update()
-                
-                # 디버깅용: 발견된 위치 표시
-                debug_img = screenshot.copy()
-                cv2.rectangle(debug_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.circle(debug_img, (center_x, center_y), 5, (0, 0, 255), -1)
-                
-                debug_result_path = os.path.join(debug_dir, 'found_result.png')
-                cv2.imwrite(debug_result_path, debug_img)
-                print(f"인식 결과 이미지 저장: {debug_result_path}")
-                
-                # 캔버스에 표시 (발견 위치 보여주기)
-                try:
-                    # 캡처 이미지를 캔버스에 표시
-                    self.screenshot = screenshot
-                    screenshot_rgb = cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB)
-                    pil_img = Image.fromarray(screenshot_rgb)
-                    
-                    # 캔버스 크기 조정
-                    #  self.screenshot_canvas.config(width=width, height=height)
-                    
-                    # 이미지 표시
-                    img_tk = ImageTk.PhotoImage(pil_img)
-                    self.screenshot_canvas.delete("all")
-                    self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
-                    self.screenshot_canvas.image = img_tk  # 참조 유지
-                    
-                    # 발견 위치 표시
-                    self.screenshot_canvas.create_rectangle(
-                        x, y, x + w, y + h, outline="green", width=2, tags="found"
-                    )
-                    self.screenshot_canvas.create_oval(
-                        center_x - 5, center_y - 5, center_x + 5, center_y + 5,
-                        fill="red", outline="red", tags="center"
-                    )
-                    
-                    self.update()
-                except Exception as e:
-                    print(f"결과 표시 오류: {e}")
-                
-                # 화면 좌표로 변환
+                # 화면 절대 좌표 계산
                 screen_x = left + center_x
                 screen_y = top + center_y
-                print(f"클릭 좌표 (화면 기준): ({screen_x}, {screen_y})")
+                print(f"화면 절대 좌표: ({screen_x}, {screen_y})")
                 
-                # 클릭 시도
+                # 모든 방법을 시도
+                click_success = False
+                
+                # 방법 1: 직접 마우스 이벤트 전송 (활성화 없이)
                 try:
-                    # 1. 기존 방식
                     import pydirectinput
-                    pydirectinput.PAUSE = 0.1
+                    print("방법 1: PyDirectInput 사용 (활성화 없이)")
                     
-                    # 현재 마우스 위치 저장
-                    old_pos = pyautogui.position()
-                    print(f"현재 마우스 위치: {old_pos}")
+                    # 마우스 이동 및 클릭
+                    pydirectinput.moveTo(screen_x, screen_y, _pause=False)
+                    time.sleep(0.1)
+                    pydirectinput.click(_pause=False)
+                    time.sleep(0.1)
                     
-                    # 좌표로 이동
-                    print(f"마우스 이동 시도: ({screen_x}, {screen_y})")
-                    pydirectinput.moveTo(screen_x, screen_y)
-                    time.sleep(0.5)
+                    print("방법 1 클릭 완료")
+                    click_success = True
+                except Exception as e:
+                    print(f"방법 1 실패: {e}")
                     
-                    # 이동 후 위치 확인
-                    new_pos = pyautogui.position()
-                    print(f"이동 후 마우스 위치: {new_pos}")
-                    
-                    # 클릭
-                    print("클릭 시도...")
-                    pydirectinput.click(button="left")
-                    time.sleep(0.2)
-                    
-                    print("클릭 완료")
-                    
-                    # 2. 대체 방식 (첫 번째가 실패한 경우)
-                    if new_pos.x != screen_x or new_pos.y != screen_y:
-                        print("첫 번째 방식 실패, 대체 방식 시도...")
+                    # 방법 2: SendInput 사용 (권한 요구 적음)
+                    try:
+                        print("방법 2: SendInput 사용")
                         
-                        # Win32API 직접 사용
-                        import win32api
-                        import win32con
+                        import ctypes
+                        from ctypes import wintypes
+                        
+                        # SendInput 함수와 필요한 구조체 설정
+                        MOUSEEVENTF_MOVE = 0x0001
+                        MOUSEEVENTF_ABSOLUTE = 0x8000
+                        MOUSEEVENTF_LEFTDOWN = 0x0002
+                        MOUSEEVENTF_LEFTUP = 0x0004
+                        
+                        class MOUSEINPUT(ctypes.Structure):
+                            _fields_ = [
+                                ("dx", wintypes.LONG),
+                                ("dy", wintypes.LONG),
+                                ("mouseData", wintypes.DWORD),
+                                ("dwFlags", wintypes.DWORD),
+                                ("time", wintypes.DWORD),
+                                ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
+                            ]
+                        
+                        class INPUT(ctypes.Structure):
+                            _fields_ = [
+                                ("type", wintypes.DWORD),
+                                ("mi", MOUSEINPUT),
+                            ]
+                        
+                        # 화면 크기 가져오기
+                        screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+                        screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+                        
+                        # 좌표 변환 (0-65535 범위)
+                        x = int(65536 * screen_x / screen_width)
+                        y = int(65536 * screen_y / screen_height)
                         
                         # 마우스 이동
-                        win32api.SetCursorPos((screen_x, screen_y))
-                        time.sleep(0.5)
+                        move_input = INPUT()
+                        move_input.type = 0  # INPUT_MOUSE
+                        move_input.mi.dx = x
+                        move_input.mi.dy = y
+                        move_input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
+                        move_input.mi.time = 0
+                        move_input.mi.dwExtraInfo = None
                         
-                        # 클릭
-                        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                        ctypes.windll.user32.SendInput(1, ctypes.byref(move_input), ctypes.sizeof(INPUT))
                         time.sleep(0.1)
-                        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
                         
-                        # 위치 확인
-                        final_pos = pyautogui.position()
-                        print(f"대체 방식 후 마우스 위치: {final_pos}")
-                    
+                        # 마우스 클릭
+                        click_down = INPUT()
+                        click_down.type = 0  # INPUT_MOUSE
+                        click_down.mi.dwFlags = MOUSEEVENTF_LEFTDOWN
+                        ctypes.windll.user32.SendInput(1, ctypes.byref(click_down), ctypes.sizeof(INPUT))
+                        time.sleep(0.1)
+                        
+                        click_up = INPUT()
+                        click_up.type = 0  # INPUT_MOUSE
+                        click_up.mi.dwFlags = MOUSEEVENTF_LEFTUP
+                        ctypes.windll.user32.SendInput(1, ctypes.byref(click_up), ctypes.sizeof(INPUT))
+                        
+                        print("방법 2 클릭 완료")
+                        click_success = True
+                    except Exception as e:
+                        print(f"방법 2 실패: {e}")
+                        
+                        # 방법 3: 마지막 시도 - 원시 윈도우 메시지
+                        try:
+                            print("방법 3: 윈도우 메시지 직접 전송")
+                            # 윈도우 내부 좌표로 변환
+                            client_x, client_y = center_x, center_y
+                            lParam = client_y << 16 | client_x
+                            
+                            # 버튼 다운
+                            win32gui.SendMessage(self.screenshot_hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lParam)
+                            time.sleep(0.1)
+                            
+                            # 버튼 업
+                            win32gui.SendMessage(self.screenshot_hwnd, win32con.WM_LBUTTONUP, 0, lParam)
+                            
+                            print("방법 3 클릭 완료")
+                            click_success = True
+                        except Exception as e:
+                            print(f"방법 3 실패: {e}")
+                
+                if click_success:
                     self.status_var.set(f"이미지 클릭 완료: {template_name}")
                     return True
-                except Exception as e:
-                    print(f"클릭 실패: {e}")
-                    self.status_var.set(f"클릭 실패: {str(e)}")
+                else:
+                    self.status_var.set("모든 클릭 방법 실패")
                     return False
             else:
-                print(f"이미지를 찾을 수 없음: 최대 신뢰도={confidence:.4f}, 임계값={threshold}")
-                self.status_var.set(f"이미지를 찾을 수 없음: 신뢰도 {confidence:.4f} < 임계값 {threshold}")
-                
-                # 디버깅용: 최대 매칭 위치 표시
-                try:
-                    # 최대 매칭 위치 찾기 (threshold와 무관하게)
-                    result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                    top_left = max_loc
-                    bottom_right = (top_left[0] + template_w, top_left[1] + template_h)
-                    
-                    debug_img = screenshot.copy()
-                    cv2.rectangle(debug_img, top_left, bottom_right, (0, 0, 255), 2)
-                    
-                    debug_result_path = os.path.join(debug_dir, 'best_match.png')
-                    cv2.imwrite(debug_result_path, debug_img)
-                    print(f"최대 매칭 위치 이미지 저장: {debug_result_path} (신뢰도: {max_val:.4f})")
-                except Exception as e:
-                    print(f"디버깅 이미지 저장 오류: {e}")
-                
+                print(f"이미지를 찾을 수 없음: 신뢰도={confidence:.4f} < 임계값={threshold}")
+                self.status_var.set(f"이미지를 찾을 수 없음")
                 return False
+                
         except Exception as e:
             import traceback
             traceback.print_exc()
             self.status_var.set(f"이미지 검색 오류: {str(e)}")
-            messagebox.showerror("오류", f"이미지 검색 중 오류 발생: {str(e)}")
             return False
+            
+    def _display_recognition_result(self, screenshot, position):
+        """인식 결과 UI에 표시"""
+        try:
+            x, y, w, h = position
+            center_x = x + w // 2
+            center_y = y + h // 2
+            
+            # 이미지 표시
+            screenshot_rgb = cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(screenshot_rgb)
+            img_tk = ImageTk.PhotoImage(pil_img)
+            
+            # 이미지 크기와 캔버스 스크롤 영역 설정
+            img_width, img_height = pil_img.size
+            self.screenshot_canvas.config(scrollregion=(0, 0, img_width, img_height))
+            
+            # 캔버스에 이미지 표시
+            self.screenshot_canvas.delete("all")
+            self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
+            self.screenshot_canvas.image = img_tk  # 참조 유지
+            
+            # 발견된 영역 표시
+            self.screenshot_canvas.create_rectangle(
+                x, y, x + w, y + h, outline="green", width=2, tags="found"
+            )
+            
+            # 중앙점 표시
+            self.screenshot_canvas.create_oval(
+                center_x - 5, center_y - 5, center_x + 5, center_y + 5,
+                fill="red", outline="red", tags="center"
+            )
+            
+            # UI 업데이트
+            self.update()
+        except Exception as e:
+            print(f"결과 표시 오류: {e}")
     
+    def setup_auto_click_ui(self):
+        """자동 클릭 기능 UI 설정"""
+        auto_click_frame = ttk.LabelFrame(self.right_frame, text="자동 클릭 모니터")
+        auto_click_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # 템플릿 선택
+        ttk.Label(auto_click_frame, text="템플릿:").pack(anchor=tk.W, padx=5, pady=2)
+        
+        # 현재 선택된 템플릿 표시
+        self.auto_click_template_var = tk.StringVar()
+        ttk.Entry(auto_click_frame, textvariable=self.auto_click_template_var, state="readonly").pack(fill=tk.X, padx=5, pady=2)
+        
+        # 템플릿 선택 버튼
+        ttk.Button(auto_click_frame, text="선택된 템플릿 사용", 
+                command=self.use_selected_template).pack(fill=tk.X, padx=5, pady=2)
+        
+        # 간격 설정
+        interval_frame = ttk.Frame(auto_click_frame)
+        interval_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(interval_frame, text="검색 간격(초):").pack(side=tk.LEFT)
+        self.interval_var = tk.StringVar(value="5.0")
+        ttk.Spinbox(interval_frame, from_=0.5, to=60.0, increment=0.5, 
+                textvariable=self.interval_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        # 임계값 설정
+        threshold_frame = ttk.Frame(auto_click_frame)
+        threshold_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(threshold_frame, text="임계값:").pack(side=tk.LEFT)
+        self.threshold_var = tk.StringVar(value="0.7")
+        ttk.Spinbox(threshold_frame, from_=0.1, to=1.0, increment=0.05,
+                textvariable=self.threshold_var, width=6).pack(side=tk.LEFT, padx=5)
+        
+        # 시작/중지 버튼
+        self.start_stop_var = tk.StringVar(value="시작")
+        self.start_stop_button = ttk.Button(auto_click_frame, 
+                                        textvariable=self.start_stop_var,
+                                        command=self.toggle_auto_click)
+        self.start_stop_button.pack(fill=tk.X, padx=5, pady=5)
+        
+        # 상태 표시
+        self.auto_click_status_var = tk.StringVar(value="대기 중")
+        ttk.Label(auto_click_frame, textvariable=self.auto_click_status_var).pack(anchor=tk.W, padx=5, pady=2)
+
+    def use_selected_template(self):
+        """템플릿 목록에서 선택된 템플릿 사용"""
+        selection = self.template_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("경고", "먼저 템플릿을 선택하세요.")
+            return
+            
+        template_name = self.template_listbox.get(selection[0])
+        self.auto_click_template_var.set(template_name)
+
+    def toggle_auto_click(self):
+        """자동 클릭 모니터링 시작/중지"""
+        if self.auto_click_monitor and self.auto_click_monitor.running:
+            # 중지
+            self.auto_click_monitor.stop()
+            self.auto_click_monitor = None
+            self.start_stop_var.set("시작")
+            self.auto_click_status_var.set("대기 중")
+        else:
+            # 시작 전 체크
+            if not self.screenshot_hwnd:
+                messagebox.showwarning("경고", "먼저 대상 윈도우를 선택하세요.")
+                return
+                
+            template_name = self.auto_click_template_var.get()
+            if not template_name:
+                messagebox.showwarning("경고", "템플릿을 선택하세요.")
+                return
+                
+            try:
+                # 파라미터 가져오기
+                interval = float(self.interval_var.get())
+                threshold = float(self.threshold_var.get())
+                
+                # 모니터 생성 및 시작
+                self.auto_click_monitor = AutoClickMonitor(
+                    self, self.screenshot_hwnd, template_name, interval, threshold
+                )
+                success = self.auto_click_monitor.start()
+                
+                if success:
+                    self.start_stop_var.set("중지")
+                    self.auto_click_status_var.set(f"실행 중: {template_name}")
+                else:
+                    self.auto_click_status_var.set("시작 실패")
+            except Exception as e:
+                messagebox.showerror("오류", f"자동 클릭 시작 오류: {str(e)}")
+                self.auto_click_status_var.set(f"오류: {str(e)}")
+                
 
 if __name__ == "__main__":
     app = AutomationGUI()

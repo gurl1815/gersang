@@ -2,9 +2,6 @@ game_mode: true
 monitoring_interval: 1.0
 name: Gersang
 rules:
-- template: sample_template
-  threshold: 0.85
-  match_method: histogram  # 히스토그램 매칭 사용 (회전/반전에 강인)
 - actions:
   - delay: 0.5
     params:

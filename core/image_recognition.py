@@ -222,31 +222,43 @@ class ImageRecognition:
         (회전, 반전에 강인함)
         
         Args:
-            image: 검색할 이미지
-            template_name: 찾을 템플릿 이름
+            image: 검색할 이미지 (현재 캡처된 화면)
+            template_name: 찾을 템플릿 이름 (사용자가 지정한 템플릿)
             threshold: 매칭 임계값 (0.0-1.0)
             
         Returns:
             tuple: (found, position, confidence)
         """
+        # 템플릿이 존재하는지 확인
         if template_name not in self.templates:
+            print(f"템플릿을 찾을 수 없음: {template_name}")
             return False, (0, 0, 0, 0), 0.0
         
+        # 템플릿 이미지 가져오기
         template = self.templates[template_name]
         
+        # 이미지 유효성 검사
         if image is None or template is None:
+            print("이미지 또는 템플릿이 None입니다")
             return False, (0, 0, 0, 0), 0.0
+        
+        # 디버깅 정보
+        print(f"템플릿 '{template_name}' 검색: 템플릿 크기={template.shape}, 이미지 크기={image.shape}")
         
         # 템플릿 크기
         template_h, template_w = template.shape[:2]
         
         # 먼저 일반 템플릿 매칭으로 후보 영역 찾기
-        # (계산량 줄이기 위한 최적화)
-        result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
-        locations = np.where(result >= threshold * 0.7)  # 낮은 임계값 사용
-        
-        # 후보 위치가 없으면 실패
-        if len(locations[0]) == 0:
+        try:
+            result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+            locations = np.where(result >= threshold * 0.7)  # 낮은 임계값 사용
+            
+            # 후보 위치가 없으면 실패
+            if len(locations[0]) == 0:
+                print(f"템플릿 매칭으로 후보 영역을 찾지 못함: {template_name}")
+                return False, (0, 0, 0, 0), 0.0
+        except Exception as e:
+            print(f"템플릿 매칭 오류: {e}")
             return False, (0, 0, 0, 0), 0.0
         
         # 템플릿의 히스토그램 계산
@@ -272,7 +284,7 @@ class ImageRecognition:
             # 후보 영역의 히스토그램 계산
             roi_hist = self._calc_color_histogram(roi)
             
-            # 히스토그램 비교
+            # 히스토그램 비교 (상관관계 방식 - 값이 높을수록 유사)
             hist_match = cv2.compareHist(template_hist, roi_hist, cv2.HISTCMP_CORREL)
             
             # 더 좋은 매칭 결과 저장
@@ -282,6 +294,7 @@ class ImageRecognition:
         
         # 결과 반환
         found = best_match['confidence'] >= threshold
+        print(f"히스토그램 매칭 결과: 발견={found}, 신뢰도={best_match['confidence']:.4f}, 임계값={threshold}")
         return found, best_match['position'], best_match['confidence']
 
     def _calc_color_histogram(self, img):

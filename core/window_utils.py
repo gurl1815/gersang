@@ -1,5 +1,6 @@
 # core/window_utils.py
 
+import cv2
 import win32gui
 import win32con
 import win32api
@@ -121,8 +122,15 @@ class WindowUtils:
             numpy.ndarray: 캡처된 이미지 (OpenCV 형식)
         """
         if not hwnd or not win32gui.IsWindow(hwnd):
+            print(f"캡처 실패: 유효하지 않은 윈도우 핸들 {hwnd}")
             return None
-            
+
+        # 윈도우 정보 출력
+        window_title = win32gui.GetWindowText(hwnd)
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        width, height = right - left, bottom - top
+        print(f"캡처 시도: '{window_title}' (핸들: {hwnd}, 크기: {width}x{height})")
+      
         try:
             # 윈도우 위치와 크기
             left, top, right, bottom = win32gui.GetWindowRect(hwnd)
