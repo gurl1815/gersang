@@ -10,6 +10,13 @@ from ctypes import wintypes
 import pyautogui
 import pydirectinput
 from core.window_utils import WindowUtils
+import subprocess
+import shutil
+
+# ----- 사용자 환경 변수(필요시 경로 수정) -----
+# intercept CLI 실행파일(빌드/설치한 바이너리 경로) - PATH에 넣어놨다면 그냥 "intercept"로 둬도 됨
+INTERCEPT_CLI = "intercept"   # 예: "C:\\tools\\intercept.exe" 또는 "intercept" (PATH에 있으면)
+# ------------------------------------------------
 
 # Win32 구조체 정의
 PUL = ctypes.POINTER(ctypes.c_ulong)
@@ -129,32 +136,84 @@ class AutoClickMonitor:
             time.sleep(self.interval)
     
 
+    # --------- 변경된 _try_click_methods 함수 ---------
     def _try_click_methods(self, center_x, center_y, screen_x, screen_y):
-        """커서 이동 없이, 눈에는 안 보이지만 클릭이 들어가는 방식"""
+        """Interception CLI로 절대 클릭(커서 표시 여부는 시스템/CLI 구현에 따름)"""
         try:
             hwnd = self.hwnd
             is_game_active = (win32gui.GetForegroundWindow() == hwnd)
             print(f"[자동] 게임 활성화 상태: {is_game_active}")
 
-            # 클릭 신호만 하드웨어 이벤트로 전송
-            down_input = INPUT(
-                type=INPUT_MOUSE,
-                mi=MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTDOWN, 0, None)
-            )
-            up_input = INPUT(
-                type=INPUT_MOUSE,
-                mi=MOUSEINPUT(0, 0, 0, MOUSEEVENTF_LEFTUP, 0, None)
-            )
+            # 인터셉트 CLI 찾기
+            cli_path = _find_intercept_cli()
+            if not cli_path:
+                print("[자동] Intercept CLI를 찾지 못했습니다. INTERCEPTION 드라이버 및 CLI가 설치/빌드되어 있어야 합니다.")
+                print("         (설치가 되어있다면, CLI 실행파일을 PATH에 추가하거나 INTERCEPT_CLI 변수에 경로를 지정하세요.)")
+                return False
 
-            # 실제 하드웨어 입력 전송
-            ctypes.windll.user32.SendInput(1, ctypes.byref(down_input), ctypes.sizeof(down_input))
-            time.sleep(0.03)
-            ctypes.windll.user32.SendInput(1, ctypes.byref(up_input), ctypes.sizeof(up_input))
-            time.sleep(0.03)
+            # (선택) 현재 커서 위치 저장 (원복 원하면 사용)
+            # ctypes 방식으로 현재 커서 얻기
+            class POINT(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+            pt = POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            orig_x, orig_y = pt.x, pt.y
 
-            print(f"[자동] 커서 이동 없이 하드웨어 클릭 입력 완료 ({screen_x}, {screen_y})")
+            # 1) 대상 위치로 마우스 워프(절대 이동)
+            try:
+                _call_intercept_move(cli_path, screen_x, screen_y)
+                time.sleep(0.02)
+            except subprocess.CalledProcessError as e:
+                print(f"[자동] Intercept move 실패: {e}")
+                return False
+
+            # 2) 클릭 (left)
+            try:
+                _call_intercept_click(cli_path, "left")
+                time.sleep(0.03)
+            except subprocess.CalledProcessError as e:
+                print(f"[자동] Intercept click 실패: {e}")
+                return False
+
+            # 3) (선택) 원래 위치로 복원 — 필요 없으면 주석 처리
+            try:
+                _call_intercept_move(cli_path, orig_x, orig_y)
+                time.sleep(0.02)
+            except Exception:
+                # 복원 실패해도 치명적이지 않으므로 로그만 남김
+                print("[자동] 경고: 커서 원복에 실패했습니다.")
+
+            print(f"[자동] Interception 클릭 완료 ({screen_x}, {screen_y}) via {cli_path}")
             return True
 
         except Exception as e:
-            print(f"[자동] 하드웨어 클릭 실패: {e}")
+            print(f"[자동] Interception 방식 실패: {e}")
             return False
+        
+        
+    def _find_intercept_cli(cli_candidates=("intercept", "interception-cli", "intercept.exe", "interception.exe")):
+        """PATH나 지정된 이름에서 intercept CLI를 찾음"""
+        # 1) 먼저 전역으로 지정된 INTERCEPT_CLI가 실행 가능한지 체크
+        if shutil.which(INTERCEPT_CLI):
+            return shutil.which(INTERCEPT_CLI)
+        # 2) 후보 이름들 중 PATH에서 찾기
+        for name in cli_candidates:
+            p = shutil.which(name)
+            if p:
+                return p
+        return None
+
+    def _call_intercept_move(cli_path, x, y):
+        """
+        CLI 호출 예시: intercept mouse move <x> <y>
+        실제 CLI의 인자/명령은 빌드한 유틸리티에 따라 다를 수 있으므로,
+        필요하면 해당 유틸의 사용법에 맞게 여기를 수정하세요.
+        """
+        # Windows 좌표(픽셀)를 바로 전달하는 예제 명령어
+        # 일부 CLI는 절대 좌표가 0~65535 스케일을 요구할 수 있음. CLI 매뉴얼 참고.
+        cmd = [cli_path, "mouse", "move", str(int(x)), str(int(y))]
+        subprocess.run(cmd, check=True)
+
+    def _call_intercept_click(cli_path, button="left"):
+        cmd = [cli_path, "mouse", "click", button]
+        subprocess.run(cmd, check=True)
