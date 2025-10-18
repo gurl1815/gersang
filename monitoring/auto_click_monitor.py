@@ -161,7 +161,7 @@ class AutoClickMonitor:
 
             # 1) 대상 위치로 마우스 워프(절대 이동)
             try:
-                _call_intercept_move(cli_path, screen_x, screen_y)
+                self._call_intercept_move(cli_path, screen_x, screen_y)
                 time.sleep(0.02)
             except subprocess.CalledProcessError as e:
                 print(f"[자동] Intercept move 실패: {e}")
@@ -169,7 +169,7 @@ class AutoClickMonitor:
 
             # 2) 클릭 (left)
             try:
-                _call_intercept_click(cli_path, "left")
+                self._call_intercept_click(cli_path, "left")
                 time.sleep(0.03)
             except subprocess.CalledProcessError as e:
                 print(f"[자동] Intercept click 실패: {e}")
@@ -177,7 +177,7 @@ class AutoClickMonitor:
 
             # 3) (선택) 원래 위치로 복원 — 필요 없으면 주석 처리
             try:
-                _call_intercept_move(cli_path, orig_x, orig_y)
+                self._call_intercept_move(cli_path, orig_x, orig_y)
                 time.sleep(0.02)
             except Exception:
                 # 복원 실패해도 치명적이지 않으므로 로그만 남김
