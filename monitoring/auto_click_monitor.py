@@ -19,7 +19,7 @@ import os
 log = logging.getLogger(__name__)
 
 # 경로: 필요시 절대경로로 바꿔 주세요
-DD_DLL_PATH = os.path.abspath("./DD94687.64.dll")  # 또는 "C:\\path\\to\\DD94687.64.dll"
+DD_DLL_PATH = os.path.abspath("./dd/DD94687.64.dll")  # 또는 "C:\\path\\to\\DD94687.64.dll"
 
 class ClassDD:
     def __init__(self, dll_path=DD_DLL_PATH):
