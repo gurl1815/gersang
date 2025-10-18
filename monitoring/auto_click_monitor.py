@@ -7,39 +7,66 @@ import win32con
 import win32api
 import ctypes
 from ctypes import wintypes
+import ctypes.wintypes as wintypes
 import pyautogui
 import pydirectinput
 from core.window_utils import WindowUtils
 import subprocess
 import shutil
+import logging
+import os
 
-# ----- 사용자 환경 변수(필요시 경로 수정) -----
-# intercept CLI 실행파일(빌드/설치한 바이너리 경로) - PATH에 넣어놨다면 그냥 "intercept"로 둬도 됨
-INTERCEPT_CLI = "intercept"   # 예: "C:\\tools\\intercept.exe" 또는 "intercept" (PATH에 있으면)
-# ------------------------------------------------
+log = logging.getLogger(__name__)
 
-# Win32 구조체 정의
-PUL = ctypes.POINTER(ctypes.c_ulong)
+# 경로: 필요시 절대경로로 바꿔 주세요
+DD_DLL_PATH = os.path.abspath("./DD94687.64.dll")  # 또는 "C:\\path\\to\\DD94687.64.dll"
 
-class MOUSEINPUT(ctypes.Structure):
-    _fields_ = [
-        ("dx", ctypes.c_long),
-        ("dy", ctypes.c_long),
-        ("mouseData", ctypes.c_ulong),
-        ("dwFlags", ctypes.c_ulong),
-        ("time", ctypes.c_ulong),
-        ("dwExtraInfo", PUL)
-    ]
+class ClassDD:
+    def __init__(self, dll_path=DD_DLL_PATH):
+        self.dll_path = dll_path
+        self.dll = None
+        self.loaded = False
+        # 실제 호출 규약이 stdcall이면 WinDLL, cdecl이면 CDLL
+        try:
+            if os.path.exists(dll_path):
+                # 기본으로 WinDLL 사용 (많은 ClassDD 계열이 stdcall 사용)
+                self.dll = ctypes.WinDLL(dll_path)
+                # 함수 존재/시그니처 안전 설정 (실제 DLL export에 따라 수정)
+                if hasattr(self.dll, "DD_key"):
+                    self.dll.DD_key.argtypes = (ctypes.c_int, ctypes.c_int)
+                    self.dll.DD_key.restype  = ctypes.c_int
+                if hasattr(self.dll, "DD_mouse"):
+                    self.dll.DD_mouse.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
+                    self.dll.DD_mouse.restype  = ctypes.c_int
+                if hasattr(self.dll, "DD_move"):
+                    self.dll.DD_move.argtypes = (ctypes.c_int, ctypes.c_int)
+                    self.dll.DD_move.restype  = ctypes.c_int
+                self.loaded = True
+                log.info("ClassDD DLL loaded: %s", dll_path)
+            else:
+                log.info("ClassDD DLL not found at %s", dll_path)
+        except Exception as e:
+            log.exception("Failed to load ClassDD DLL: %s", e)
+            self.loaded = False
 
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", ctypes.c_ulong), ("mi", MOUSEINPUT)]
+    def key(self, code, action):
+        if not self.loaded or not hasattr(self.dll, "DD_key"):
+            raise RuntimeError("DD_key not available")
+        return int(self.dll.DD_key(int(code), int(action)))
 
-# 상수 정의
-INPUT_MOUSE = 0
-MOUSEEVENTF_MOVE = 0x0001
-MOUSEEVENTF_ABSOLUTE = 0x8000
-MOUSEEVENTF_LEFTDOWN = 0x0002
-MOUSEEVENTF_LEFTUP = 0x0004
+    def mouse(self, x, y, button=1, action=1):
+        # button/action 의미는 DLL 스펙에 따름; 예시는 (x,y,button,action)
+        if not self.loaded or not hasattr(self.dll, "DD_mouse"):
+            raise RuntimeError("DD_mouse not available")
+        return int(self.dll.DD_mouse(int(x), int(y), int(button), int(action)))
+
+    def move(self, x, y):
+        if not self.loaded or not hasattr(self.dll, "DD_move"):
+            raise RuntimeError("DD_move not available")
+        return int(self.dll.DD_move(int(x), int(y)))
+
+# 싱글톤 인스턴스 (파일 로드 시 한 번 생성)
+_classdd = ClassDD(DD_DLL_PATH)
 
 class AutoClickMonitor:
     """주기적으로 이미지를 찾아 클릭하는 모니터링 클래스"""
@@ -136,84 +163,99 @@ class AutoClickMonitor:
             time.sleep(self.interval)
     
 
-    # --------- 변경된 _try_click_methods 함수 ---------
     def _try_click_methods(self, center_x, center_y, screen_x, screen_y):
-        """Interception CLI로 절대 클릭(커서 표시 여부는 시스템/CLI 구현에 따름)"""
+        """
+        ClassDD 우선 시도. 실패 시 win32/pydirectinput 사용자 레벨 클릭으로 폴백.
+        이 함수는 원본 시그니처를 유지합니다.
+        """
         try:
             hwnd = self.hwnd
             is_game_active = (win32gui.GetForegroundWindow() == hwnd)
-            print(f"[자동] 게임 활성화 상태: {is_game_active}")
+            log.info("[자동] 게임 활성화 상태: %s", is_game_active)
 
-            # 인터셉트 CLI 찾기
-            cli_path = _find_intercept_cli()
-            if not cli_path:
-                print("[자동] Intercept CLI를 찾지 못했습니다. INTERCEPTION 드라이버 및 CLI가 설치/빌드되어 있어야 합니다.")
-                print("         (설치가 되어있다면, CLI 실행파일을 PATH에 추가하거나 INTERCEPT_CLI 변수에 경로를 지정하세요.)")
-                return False
-
-            # (선택) 현재 커서 위치 저장 (원복 원하면 사용)
-            # ctypes 방식으로 현재 커서 얻기
-            class POINT(ctypes.Structure):
-                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-            pt = POINT()
-            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-            orig_x, orig_y = pt.x, pt.y
-
-            # 1) 대상 위치로 마우스 워프(절대 이동)
+            # 1) ClassDD (DLL) 우선 사용
             try:
-                self._call_intercept_move(cli_path, screen_x, screen_y)
+                if _classdd.loaded:
+                    log.debug("[자동] ClassDD 사용 시도: move->click")
+                    # 가능한 경우 move 사용
+                    try:
+                        # ClassDD.move이 존재하면 절대 좌표로 이동 시도
+                        _classdd.move(screen_x, screen_y)
+                        time.sleep(0.01)
+                    except Exception:
+                        log.debug("DD_move 미제공 또는 실패 - 건너뜀")
+
+                    # 우선 DD_mouse 호출 시도 (있으면 사용)
+                    try:
+                        if hasattr(_classdd.dll, "DD_mouse"):
+                            # action 1=down, 2=up 가정 (DLL 스펙 확인 필요)
+                            _classdd.mouse(screen_x, screen_y, 1, 1)  # down
+                            time.sleep(0.02)
+                            _classdd.mouse(screen_x, screen_y, 1, 2)  # up
+                            log.info("[자동] ClassDD DD_mouse로 클릭 성공")
+                            return True
+                        else:
+                            # DD_mouse가 없으면 DD_key로 마우스/핫키 시뮬 (게임에서 사용하는 키코드 필요)
+                            # 예: 201 같은 마우스/단축키 코드 (사용 환경에 따라 수정)
+                            _classdd.key(201, 1)
+                            time.sleep(0.02)
+                            _classdd.key(201, 2)
+                            log.info("[자동] ClassDD DD_key로 클릭(대체) 성공")
+                            return True
+                    except Exception as e:
+                        log.exception("ClassDD 클릭 시도 실패: %s", e)
+                        # DLL 실패인 경우 아래 폴백으로 넘어감
+                else:
+                    log.debug("ClassDD DLL 미로딩 상태, 건너뜀")
+            except Exception as e:
+                log.exception("ClassDD 전체 시도 중 예외: %s", e)
+
+            # 2) DLL이 없거나 실패하면 사용자 레벨 클릭 (폴백)
+            # 방법 A: win32api로 커서 이동 + mouse_event (기본 fallback)
+            try:
+                # 현재 커서 보관
+                class POINT(ctypes.Structure):
+                    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+                pt = POINT()
+                ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+                orig_x, orig_y = pt.x, pt.y
+
+                # 절대 이동 (SetCursorPos은 픽셀 단위)
+                win32api.SetCursorPos((int(screen_x), int(screen_y)))
+                time.sleep(0.01)
+
+                # 마우스 클릭 이벤트 (mouse_event 사용)
+                # 이 방법은 일부 게임/안티치트에서 막힐 수 있음
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
                 time.sleep(0.02)
-            except subprocess.CalledProcessError as e:
-                print(f"[자동] Intercept move 실패: {e}")
-                return False
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                time.sleep(0.01)
 
-            # 2) 클릭 (left)
+                # 원복
+                try:
+                    win32api.SetCursorPos((int(orig_x), int(orig_y)))
+                except Exception:
+                    log.debug("커서 원복 실패")
+
+                log.info("[자동] win32api mouse_event로 클릭 성공 (폴백)")
+                return True
+            except Exception as e:
+                log.exception("win32api 폴백 실패: %s", e)
+
+            # 3) 마지막 폴백: pydirectinput (더 높은 권한/대체 라이브러리)
             try:
-                self._call_intercept_click(cli_path, "left")
-                time.sleep(0.03)
-            except subprocess.CalledProcessError as e:
-                print(f"[자동] Intercept click 실패: {e}")
-                return False
+                # pydirectinput은 게임에서 더 잘 먹히는 경우가 있음
+                pydirectinput.moveTo(int(screen_x), int(screen_y))
+                time.sleep(0.01)
+                pydirectinput.click()
+                log.info("[자동] pydirectinput로 클릭 성공 (최종 폴백)")
+                return True
+            except Exception as e:
+                log.exception("pydirectinput 폴백 실패: %s", e)
 
-            # 3) (선택) 원래 위치로 복원 — 필요 없으면 주석 처리
-            try:
-                self._call_intercept_move(cli_path, orig_x, orig_y)
-                time.sleep(0.02)
-            except Exception:
-                # 복원 실패해도 치명적이지 않으므로 로그만 남김
-                print("[자동] 경고: 커서 원복에 실패했습니다.")
-
-            print(f"[자동] Interception 클릭 완료 ({screen_x}, {screen_y}) via {cli_path}")
-            return True
+            log.warning("[자동] 모든 클릭 방법 실패")
+            return False
 
         except Exception as e:
-            print(f"[자동] Interception 방식 실패: {e}")
+            log.exception("[자동] _try_click_methods 예외: %s", e)
             return False
-        
-        
-    def _find_intercept_cli(cli_candidates=("intercept", "interception-cli", "intercept.exe", "interception.exe")):
-        """PATH나 지정된 이름에서 intercept CLI를 찾음"""
-        # 1) 먼저 전역으로 지정된 INTERCEPT_CLI가 실행 가능한지 체크
-        if shutil.which(INTERCEPT_CLI):
-            return shutil.which(INTERCEPT_CLI)
-        # 2) 후보 이름들 중 PATH에서 찾기
-        for name in cli_candidates:
-            p = shutil.which(name)
-            if p:
-                return p
-        return None
-
-    def _call_intercept_move(cli_path, x, y):
-        """
-        CLI 호출 예시: intercept mouse move <x> <y>
-        실제 CLI의 인자/명령은 빌드한 유틸리티에 따라 다를 수 있으므로,
-        필요하면 해당 유틸의 사용법에 맞게 여기를 수정하세요.
-        """
-        # Windows 좌표(픽셀)를 바로 전달하는 예제 명령어
-        # 일부 CLI는 절대 좌표가 0~65535 스케일을 요구할 수 있음. CLI 매뉴얼 참고.
-        cmd = [cli_path, "mouse", "move", str(int(x)), str(int(y))]
-        subprocess.run(cmd, check=True)
-
-    def _call_intercept_click(cli_path, button="left"):
-        cmd = [cli_path, "mouse", "click", button]
-        subprocess.run(cmd, check=True)

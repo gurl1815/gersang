@@ -26,13 +26,17 @@ from monitoring.auto_click_monitor import AutoClickMonitor
 
 class AutomationGUI(tk.Tk):
     """윈도우 멀티 프로그램 자동화 GUI"""
-        
+    
     def __init__(self):
         super().__init__()
         
         # 기본 설정
         self.title("윈도우 멀티 프로그램 자동화")
+<<<<<<< HEAD
         self.geometry("900x700")
+=======
+        self.geometry("900x600")
+>>>>>>> parent of 7133474 (이미지 검색됨)
         
         # 디렉토리 설정
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -114,33 +118,12 @@ class AutomationGUI(tk.Tk):
         self.screenshot_frame = ttk.Frame(center_frame)
         self.screenshot_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # 고정 크기 캔버스와 스크롤바 추가
-        canvas_frame = ttk.Frame(self.screenshot_frame)
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 스크롤바 추가
-        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        v_scrollbar = ttk.Scrollbar(canvas_frame)
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # 고정 크기 캔버스 (600x400 권장)
-        self.screenshot_canvas = tk.Canvas(canvas_frame, bg="lightgray", 
-                                        width=600, height=400,
-                                        xscrollcommand=h_scrollbar.set,
-                                        yscrollcommand=v_scrollbar.set)
-        self.screenshot_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # 스크롤바와 캔버스 연결
-        h_scrollbar.config(command=self.screenshot_canvas.xview)
-        v_scrollbar.config(command=self.screenshot_canvas.yview)
-        
-        # 이벤트 바인딩 유지
+        self.screenshot_canvas = tk.Canvas(self.screenshot_frame, bg="lightgray")
+        self.screenshot_canvas.pack(fill=tk.BOTH, expand=True)
         self.screenshot_canvas.bind("<ButtonPress-1>", self.on_canvas_press)
         self.screenshot_canvas.bind("<B1-Motion>", self.on_canvas_drag)
         self.screenshot_canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
-
+        
         # 템플릿 컨트롤
         template_frame = ttk.Frame(center_frame)
         template_frame.pack(fill=tk.X, padx=5, pady=5)
@@ -630,7 +613,7 @@ class AutomationGUI(tk.Tk):
             
             # 윈도우 활성화
             win32gui.SetForegroundWindow(self.screenshot_hwnd)
-            time.sleep(0.1)  # 전환 대기
+            time.sleep(0.5)  # 전환 대기
             
             # 클라이언트 영역 캡처
             import pyautogui
@@ -647,14 +630,10 @@ class AutomationGUI(tk.Tk):
             pil_img = Image.fromarray(screenshot_rgb)
             
             # 캔버스 크기 조정
-            # width, height = pil_img.size
-            # self.screenshot_canvas.config(width=width, height=height)
+            width, height = pil_img.size
+            self.screenshot_canvas.config(width=width, height=height)
             
-           # 이미지 크기와 캔버스 스크롤 영역 설정
-            img_width, img_height = pil_img.size
-            self.screenshot_canvas.config(scrollregion=(0, 0, img_width, img_height))
-            
-            # 이미지 표시 (캔버스 크기는 변경하지 않음)
+            # 이미지 표시
             img_tk = ImageTk.PhotoImage(pil_img)
             self.screenshot_canvas.delete("all")
             self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
@@ -663,7 +642,7 @@ class AutomationGUI(tk.Tk):
             # 스크린샷 저장
             self.screenshot = screenshot
             
-            # self.status_var.set(f"클라이언트 영역 캡처 완료: {width}x{height}")
+            self.status_var.set(f"클라이언트 영역 캡처 완료: {width}x{height}")
         
         except Exception as e:
             self.status_var.set(f"캡처 오류: {str(e)}")
@@ -1283,7 +1262,53 @@ class AutomationGUI(tk.Tk):
                 center_y = y + h // 2
                 print(f"이미지 발견: 위치=({x}, {y}), 중심=({center_x}, {center_y}), 신뢰도={confidence:.4f}")
                 
+<<<<<<< HEAD
                 # 화면 절대 좌표 계산
+=======
+                print(f"이미지 발견: 위치=({x}, {y}), 크기={w}x{h}, 중심=({center_x}, {center_y}), 신뢰도={confidence:.4f}")
+                self.status_var.set(f"이미지 발견: 위치=({x}, {y}), 신뢰도={confidence:.4f}")
+                self.update()
+                
+                # 디버깅용: 발견된 위치 표시
+                debug_img = screenshot.copy()
+                cv2.rectangle(debug_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.circle(debug_img, (center_x, center_y), 5, (0, 0, 255), -1)
+                
+                debug_result_path = os.path.join(debug_dir, 'found_result.png')
+                cv2.imwrite(debug_result_path, debug_img)
+                print(f"인식 결과 이미지 저장: {debug_result_path}")
+                
+                # 캔버스에 표시 (발견 위치 보여주기)
+                try:
+                    # 캡처 이미지를 캔버스에 표시
+                    self.screenshot = screenshot
+                    screenshot_rgb = cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(screenshot_rgb)
+                    
+                    # 캔버스 크기 조정
+                    self.screenshot_canvas.config(width=width, height=height)
+                    
+                    # 이미지 표시
+                    img_tk = ImageTk.PhotoImage(pil_img)
+                    self.screenshot_canvas.delete("all")
+                    self.screenshot_canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
+                    self.screenshot_canvas.image = img_tk  # 참조 유지
+                    
+                    # 발견 위치 표시
+                    self.screenshot_canvas.create_rectangle(
+                        x, y, x + w, y + h, outline="green", width=2, tags="found"
+                    )
+                    self.screenshot_canvas.create_oval(
+                        center_x - 5, center_y - 5, center_x + 5, center_y + 5,
+                        fill="red", outline="red", tags="center"
+                    )
+                    
+                    self.update()
+                except Exception as e:
+                    print(f"결과 표시 오류: {e}")
+                
+                # 화면 좌표로 변환
+>>>>>>> parent of 7133474 (이미지 검색됨)
                 screen_x = left + center_x
                 screen_y = top + center_y
                 print(f"화면 절대 좌표: ({screen_x}, {screen_y})")
